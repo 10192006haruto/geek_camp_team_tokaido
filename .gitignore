@@ -1,0 +1,5 @@
+# Local environment files and secrets (at any directory level)
+.env*
+
+# macOS metadata
+.DS_Store
