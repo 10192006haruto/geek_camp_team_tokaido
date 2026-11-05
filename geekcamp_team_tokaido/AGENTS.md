@@ -17,6 +17,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 同じNext.jsプロジェクト内で責務を分離します。別サーバーやGoは導入しません。TypeScriptを基本とし、既存構成・依存関係を尊重します。
 - 現在は初期テンプレートです。今回の成果物はMarkdownのみで、下記の配置・API・画面は実装予定です。
 
+リポジトリ/
+├── AGENTS.md       ← 共通ルールの本体
+├── CLAUDE.md       ← @AGENTS.md の1行
+├── docs/
+└── src/
+
 ### 配置と契約
 
 - `src/app/`：ページ・レイアウト、`src/app/api/`：HTTP境界。
