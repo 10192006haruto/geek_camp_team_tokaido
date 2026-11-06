@@ -3,11 +3,11 @@ import { test } from "node:test";
 import { DiscoverySession, INITIAL_CONDITIONS, candidateKey, rankByMood, scrollIntent, type Acquire, type DiscoveryRequest } from "./discovery.js";
 import { DEMO_LOCATION, DEFAULT_FILTERS, previewResults } from "./preview.js";
 const pool = previewResults({ ...DEFAULT_FILTERS, location: DEMO_LOCATION }, "success").restaurants;
-const request: DiscoveryRequest = { conditions: { ...INITIAL_CONDITIONS }, location: DEMO_LOCATION, mode: "live", scenario: "success" };
+const request: DiscoveryRequest = { conditions: { ...INITIAL_CONDITIONS }, location: DEMO_LOCATION, mode: "demo", scenario: "missing" };
 
 test("mood and opening filters reuse candidates; radius, coordinates and explicit refresh retrieve again", async () => {
   let calls = 0;
-  const session = new DiscoverySession(async () => { calls++; return { candidates: pool, scope: "returned" }; });
+  const session = new DiscoverySession(async () => { calls++; return { candidates: pool, scope: "demo-pool" }; });
   await session.run(request);
   const ranked = await session.run({ ...request, conditions: { ...request.conditions, mood: "そば" } });
   assert.equal(ranked.displayed[0].id, pool[1].id);
@@ -25,7 +25,7 @@ test("mood and opening filters reuse candidates; radius, coordinates and explici
 });
 test("retrieval identity ignores mood and opening filters but separates modes", () => {
   assert.equal(candidateKey(request), candidateKey({ ...request, conditions: { ...request.conditions, mood: "カフェ", openNow: true } }));
-  assert.notEqual(candidateKey(request), candidateKey({ ...request, mode: "demo" }));
+  assert.notEqual(candidateKey(request), candidateKey({ ...request, mode: "live" }));
 });
 test("ranking considers candidates beyond the first five", async () => {
   const candidates = Array.from({ length: 7 }, (_, i) => ({ ...pool[0], id: String(i), cuisineLabel: i === 6 ? "うどん" : "和食" }));
@@ -45,26 +45,26 @@ test("unknown intent/cuisine are retained; generated recommendations never deter
 });
 test("ranking failure, omission, duplicate and fabricated IDs fall back to normal order", async () => {
   for (const rank of [async () => { throw new Error("unavailable"); }, async () => pool.slice(1), async () => [pool[0], pool[0], pool[2]], async () => [...pool.slice(0, 2), { ...pool[2], id: "fake" }]]) {
-    const session = new DiscoverySession(async () => ({ candidates: pool, scope: "returned" }), rank);
+    const session = new DiscoverySession(async () => ({ candidates: pool, scope: "demo-pool" }), rank);
     const result = await session.run(request);
     assert.deepEqual(result.displayed, pool);
     assert.match(result.notice!, /通常/);
   }
 });
 test("ranker cannot change provider facts", async () => {
-  const session = new DiscoverySession(async () => ({ candidates: pool, scope: "returned" }), async (items) => items.map((r) => ({ ...r, recommendationReason: "invented" })));
+  const session = new DiscoverySession(async () => ({ candidates: pool, scope: "demo-pool" }), async (items) => items.map((r) => ({ ...r, recommendationReason: "invented" })));
   assert.deepEqual((await session.run(request)).displayed, pool);
 });
 test("late requests cannot overwrite a newer candidate cache", async () => {
-  let finish!: (value: { candidates: typeof pool; scope: "returned" }) => void;
+  let finish!: (value: { candidates: typeof pool; scope: "demo-pool" }) => void;
   let calls = 0;
-  const acquire: Acquire = async () => ++calls === 1 ? new Promise((resolve) => { finish = resolve; }) : { candidates: [pool[1]], scope: "returned" };
+  const acquire: Acquire = async () => ++calls === 1 ? new Promise((resolve) => { finish = resolve; }) : { candidates: [pool[1]], scope: "demo-pool" };
   const session = new DiscoverySession(acquire);
   const old = session.run(request);
   const rejected = assert.rejects(old, { name: "AbortError" });
   const nextRequest = { ...request, conditions: { ...request.conditions, radiusMeters: 3000 as const } };
   const fresh = await session.run(nextRequest);
-  finish({ candidates: pool, scope: "returned" });
+  finish({ candidates: pool, scope: "demo-pool" });
   await rejected;
   assert.deepEqual(fresh.displayed, [pool[1]]);
   assert.deepEqual((await session.run(nextRequest)).displayed, [pool[1]]);
@@ -72,14 +72,14 @@ test("late requests cannot overwrite a newer candidate cache", async () => {
 });
 test("cancelled slow ranking cannot commit", async () => {
   let finish!: (items: typeof pool) => void;
-  const session = new DiscoverySession(async () => ({ candidates: pool, scope: "returned" }), () => new Promise((resolve) => { finish = resolve; }));
+  const session = new DiscoverySession(async () => ({ candidates: pool, scope: "demo-pool" }), () => new Promise((resolve) => { finish = resolve; }));
   const pending = session.run(request);
   await Promise.resolve(); session.cancel(); finish(pool);
   await assert.rejects(pending, { name: "AbortError" });
 });
 test("failed refresh preserves the previous candidate cache", async () => {
   let calls = 0;
-  const session = new DiscoverySession(async () => { if (++calls === 2) throw new Error("offline"); return { candidates: pool, scope: "returned" }; });
+  const session = new DiscoverySession(async () => { if (++calls === 2) throw new Error("offline"); return { candidates: pool, scope: "demo-pool" }; });
   const previous = await session.run(request);
   await assert.rejects(session.run(request, true), /offline/);
   assert.deepEqual((await session.run(request)).batch, previous.batch);
@@ -93,7 +93,7 @@ test("only detail return restores position; all search completions go to top; ca
 
 test("history keeps cancelled panel position and restores detail origin; old search versions never restore old scroll", async () => {
   const { restoreHistory, HOME_VIEW } = await import("./discovery.js");
-  const result = await new DiscoverySession(async () => ({ candidates: pool, scope: "returned" })).run(request);
+  const result = await new DiscoverySession(async () => ({ candidates: pool, scope: "demo-pool" })).run(request);
   const list = { ...HOME_VIEW, screen: "results" as const, y: 1800, cardId: pool[2].id, version: 2 };
   const detail = { ...list, screen: "detail" as const, selectedId: pool[2].id };
   assert.deepEqual(restoreHistory({ ...list, panel: true }, list, 2, result).intent, { kind: "keep" });
@@ -105,14 +105,29 @@ test("history keeps cancelled panel position and restores detail origin; old sea
   assert.deepEqual(restoreHistory(detail, HOME_VIEW, 2, result).intent, { kind: "top" });
 });
 
-test("legacy adapter sends no mood/search text and explicitly labels its limited candidate scope", async (context) => {
+test("HTTP adapter sends all three conditions and marks completed server results", async (context) => {
   const { acquireCandidates } = await import("./discovery.js");
   context.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     assert.equal(url, "/api/restaurants/search");
-    assert.deepEqual(JSON.parse(init.body as string), { location: DEMO_LOCATION, radiusMeters: 1000, cuisine: null, budgetMaxYen: null });
+    assert.deepEqual(JSON.parse(init.body as string), { location: DEMO_LOCATION, radiusMeters: 1000, mood: "そばが食べたい", openNow: true });
     return new Response(JSON.stringify({ restaurants: pool, returnedCount: pool.length }));
   });
-  const batch = await acquireCandidates({ ...request, conditions: { ...request.conditions, mood: "そばが食べたい", openNow: true } }, new AbortController().signal);
-  assert.equal(batch.scope, "returned");
+  const batch = await acquireCandidates({ ...request, mode: "live", conditions: { ...request.conditions, mood: "そばが食べたい", openNow: true } }, new AbortController().signal);
+  assert.equal(batch.scope, "server-results");
   assert.equal(batch.candidates.length, 3);
+});
+
+ test("server results are not filtered or ranked twice; conditions reacquire the full pool", async () => {
+  let calls = 0;
+  const live = { ...request, mode: "live" as const };
+  const session = new DiscoverySession(async () => { calls++; return { candidates: pool, scope: "server-results" }; },
+    async () => { throw new Error("client ranking must not run"); });
+  await session.run(live);
+  const changed = { ...live, conditions: { ...live.conditions, mood: "麺", openNow: true } };
+  const result = await session.run(changed);
+  assert.equal(calls, 2);
+  assert.deepEqual(result.displayed, pool);
+  assert.equal(result.notice, null);
+  await session.run(changed);
+  assert.equal(calls, 2);
 });

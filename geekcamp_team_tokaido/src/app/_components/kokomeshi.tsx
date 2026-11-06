@@ -12,7 +12,7 @@ import { RestaurantCard, RestaurantDetail } from "./restaurant-card";
 
 type Busy = "locating" | "searching" | "ranking" | null;
 const radiusLabel = (radius: number) => radius < 1000 ? `${radius}m` : `${radius / 1000}km`;
-const statusText = (busy: Busy) => busy === "locating" ? "現在地を取得しています…" : busy === "ranking" ? "取得済みの候補を並べ替えています…" : "近くのお店を探しています…";
+const statusText = (busy: Busy) => busy === "locating" ? "現在地を取得しています…" : busy === "ranking" ? "おすすめを並べ替えています…" : "近くのお店を探しています…";
 
 export function Kokomeshi() {
   const [draft, setDraft] = useState<Conditions>(INITIAL_CONDITIONS);
@@ -168,7 +168,7 @@ export function Kokomeshi() {
           <header className="hero-top"><span className="hero-location">◎ 現在地から探す</span><span className="brand"><Pin />ここメシ</span></header>
           <div className="hero-copy"><h1 id="hero-title" tabIndex={-1}>この近く、<br />何食べる？</h1>
             <button className="primary hero-search" onClick={() => openPanel("live")} disabled={!!busy}>近くのご当地グルメを探す <span aria-hidden="true">↗</span></button>
-            <p className="hero-help">現在地を使って、周辺のお店を探します</p>
+            <p className="hero-help">現在地を使います。現在は東京駅周辺の架空店舗によるモック検索です</p>
             <button className="demo-start" onClick={() => openPanel("demo")} disabled={!!busy}>位置情報を使わず、デモで試す <span aria-hidden="true">→</span></button>
             <p className="hero-demo-note">架空店舗の操作デモもご覧いただけます</p>
           </div>
@@ -177,26 +177,27 @@ export function Kokomeshi() {
 
         {result && <section className="results-screen" hidden={screen !== "results"} aria-labelledby="results-title" aria-busy={!!busy}>
           <nav className="results-nav" aria-label="候補一覧の移動"><button className="pill" onClick={home}>⌂ ホーム</button><span className="small-brand"><Pin />ここメシ</span><button className="pill" onClick={() => openPanel(result.mode)} disabled={!!busy}>条件 <span aria-hidden="true">☷</span></button></nav>
-          <header className="results-heading"><p className="eyebrow">{result.mode === "demo" ? "架空店舗のデモ・東京駅付近" : "検索した場所の近く"}</p><h1 id="results-title" tabIndex={-1}>この近くで、<br />気になる一軒。</h1>
+          <header className="results-heading"><p className="eyebrow">{result.mode === "demo" ? "架空店舗のデモ・東京駅付近" : "モック検索・東京駅周辺の架空店舗"}</p><h1 id="results-title" tabIndex={-1}>この近くで、<br />気になる一軒。</h1>
             <p className="applied-summary">半径 {radiusLabel(result.applied.radiusMeters)}<span>／</span>{result.applied.openNow ? "営業中のみ" : "営業状況の指定なし"}<span>／</span>{result.displayed.length}件</p>
           </header>
           <div className="ranking-box"><p className="mood-summary">今日の気分：{result.applied.mood || "おまかせ"}</p>
             <form onSubmit={(event) => { event.preventDefault(); setDraft((previous) => ({ ...previous, mood })); void search({ ...result.applied, mood }, false, result.mode, result.scenario); }}>
               <label htmlFor="rerank-mood">気分を変えて、並べ替え</label><div className="rerank-row"><input id="rerank-mood" value={mood} maxLength={MOOD_LIMIT} onChange={(event) => setMood(event.target.value)} placeholder="例：そばが食べたい" /><button className="compact-primary" disabled={!!busy}>並べ替え</button></div>
             </form>
-            <p className="muted">取得済み{result.batch.candidates.length}件から、営業条件に合う{result.eligibleCount}件を並べ替え。最大5件を表示します。</p>
-            <p className="muted">料理ジャンルで判断できる気分に対応。一致が不明なお店も残します。</p>
+            <p className="muted">{result.batch.scope === "server-results"
+              ? "ご当地料理を確認できた候補に営業条件・気分を適用し、最大5件を表示します。"
+              : "表示状態の確認用データです。取得済みの架空候補から最大5件を表示します。"}</p>
+            <p className="muted">料理名・料理ジャンルで判断できる気分に対応。一致が不明なお店も残します。</p>
           </div>
-          {result.batch.scope === "returned" && <p className="scope-note">検索サービスから返されたおすすめ候補内での並べ替えです。周辺の全店舗を評価したものではありません。</p>}
-          {result.mode === "demo" && <p className="scope-note">店舗・紹介文・営業情報・評価はすべて架空です。実際の店舗写真や経路はありません。</p>}
+          <p className="scope-note">店舗・紹介文・営業情報・評価はすべて架空です。実際の店舗写真や経路はありません。</p>
           {!panel && <div className="feedback">{feedback}</div>}
           {result.notice && <p className="notice" role="status">{result.notice}</p>}
           {result.displayed.length ? <div className="candidate-list">{result.displayed.map((restaurant, index) => <RestaurantCard key={restaurant.id} restaurant={restaurant} index={index} onSelect={() => openDetail(restaurant)} />)}</div>
-            : <section className="empty-state"><Pin /><h2>この条件のお店は見つかりませんでした</h2><p>範囲を広げるか、営業中の条件を外してみてください。営業状況が不明なお店は「営業中のみ」に含めていません。</p></section>}
+            : <section className="empty-state"><Pin /><h2>条件に合うご当地料理のお店を確認できませんでした</h2><p>範囲を広げるか、営業中の条件を外してみてください。営業状況が不明なお店は「営業中のみ」に含めていません。</p></section>}
           <section className="search-again"><span className="end-mark" aria-hidden="true">・ ・ ・</span><h2>ピンとくるお店、なかった？</h2><p>もう少し先まで、探してみよう。</p><button className="primary" disabled={!!busy} onClick={() => openPanel(result.mode)}>条件を変えて探す <span aria-hidden="true">↗</span></button><button className="text-button location-refresh" disabled={!!busy} onClick={() => void search(result.applied, true, result.mode, result.scenario)}>◎ 現在地を更新して探し直す</button>{busy && <p role="status">{statusText(busy)}</p>}{error && !panel && <p role="alert">{error} 前回の結果を残しています。</p>}</section>
           <footer className="site-footer">ここメシ</footer>
         </section>}
-        {selected && screen === "detail" && <RestaurantDetail restaurant={selected} demo={result?.mode === "demo"} onBack={() => window.history.back()} onHome={home} />}
+        {selected && screen === "detail" && <RestaurantDetail restaurant={selected} demo={result?.mode === "demo" || selected.id.startsWith("mock-")} onBack={() => window.history.back()} onHome={home} />}
       </div>
     </main>
 
@@ -207,15 +208,15 @@ export function Kokomeshi() {
         <fieldset disabled={busy === "searching" || busy === "ranking"} className="condition-fields">
           <label className="mood-label" htmlFor="mood">今日の気分 <span>任意</span></label>
           <textarea id="mood" rows={2} value={draft.mood} maxLength={MOOD_LIMIT} onChange={(event) => setDraft({ ...draft, mood: event.target.value })} placeholder="例：今日は麺が食べたい" aria-describedby="mood-help mood-count" />
-          <div className="mood-hints">{["郷土料理", "麺もの", "がっつり"].map((hint) => <button type="button" key={hint} onClick={() => { setDraft({ ...draft, mood: `${draft.mood.trim() ? draft.mood.trim() + "、" : ""}${hint}`.slice(0, MOOD_LIMIT) }); document.getElementById("mood")?.focus(); }}>＋ {hint}</button>)}</div>
-          <div className="mood-description"><p id="mood-help">近くのお店を、気分に合わせておすすめ順に並べます</p><span id="mood-count">{draft.mood.length}/{MOOD_LIMIT}</span></div>
+          <div className="mood-hints">{["郷土料理", "麺もの", "和食"].map((hint) => <button type="button" key={hint} onClick={() => { setDraft({ ...draft, mood: `${draft.mood.trim() ? draft.mood.trim() + "、" : ""}${hint}`.slice(0, MOOD_LIMIT) }); document.getElementById("mood")?.focus(); }}>＋ {hint}</button>)}</div>
+          <div className="mood-description"><p id="mood-help">ご当地料理のお店を、気分に合わせて並べます。未対応の気分は距離順です</p><span id="mood-count">{draft.mood.length}/{MOOD_LIMIT}</span></div>
           <fieldset className="radius-field"><legend>探す範囲</legend><div className="radius-options">{([500, 1000, 3000] as const).map((radius) => <label key={radius}><input type="radio" name="radius" value={radius} checked={draft.radiusMeters === radius} onChange={() => setDraft({ ...draft, radiusMeters: radius })} /><span>{radiusLabel(radius)}</span></label>)}</div></fieldset>
           <label className="open-row"><span>今営業している店だけ</span><input type="checkbox" role="switch" checked={draft.openNow} onChange={(event) => setDraft({ ...draft, openNow: event.target.checked })} /></label>
-          {mode === "demo" && <details className="preview-controls"><summary>デモの表示状態</summary><label htmlFor="scenario">次に表示する状態</label><select id="scenario" value={scenario} onChange={(event) => setScenario(event.target.value as PreviewScenario)}><option value="success">通常・写真なし</option><option value="empty">0件</option><option value="missing">情報の一部欠損</option><option value="error">検索失敗</option><option value="rank-error">並べ替え失敗</option><option value="slow">遅い検索（4秒）</option></select></details>}
+          {mode === "demo" && <details className="preview-controls"><summary>デモの表示状態</summary><label htmlFor="scenario">次に表示する状態</label><select id="scenario" value={scenario} onChange={(event) => setScenario(event.target.value as PreviewScenario)}><option value="success">通常・ご当地検索</option><option value="empty">0件</option><option value="missing">情報の一部欠損</option><option value="error">検索失敗</option><option value="rank-error">並べ替え失敗</option><option value="slow">遅い検索（4秒）</option></select></details>}
         </fieldset>
         <div className="panel-feedback">{feedback}</div>
         <button type="submit" className="primary" disabled={!!busy || !locationReady}>この条件で探す <span aria-hidden="true">↗</span></button>
-        <p className="panel-note">{mode === "demo" ? "固定座標・架空店舗を使います。位置情報と外部APIは使用しません。" : "検索APIは接続準備中です。未接続の場合はご案内します。"}</p>
+        <p className="panel-note">{mode === "demo" ? "東京駅の固定座標と架空店舗を使います。現在地は取得しません。" : "現在は東京駅周辺の架空店舗を検索します。離れた場所では0件になります。"}</p>
       </form>
     </Dialog>
     <Intro />

@@ -1,58 +1,30 @@
-import type { SearchRequest, SearchResponse, Restaurant } from "@/types/restaurants";
-import { fetchMockCandidates, type CandidateRestaurant } from "./mock-data";
+import type { SearchRequest, SearchResponse } from "../../types/restaurants";
+import { fetchMockCandidates } from "./mock-data";
 import { distanceMeters } from "./distance";
+import { cleanseCandidates, classifyCandidates } from "../discovery";
+import { orderByMood } from "../../lib/restaurants/mood";
 
-const MAX_RESULTS = 5;
-
-export async function searchRestaurants(
-  req: SearchRequest,
-  signal: AbortSignal,
-): Promise<SearchResponse> {
-  // 1. 取得（ここを差し替えればモック → 実APIに切り替わる）
-  const candidates = await fetchMockCandidates(req, signal);
+/** Final limit belongs here, after regional evidence, opening status and mood. */
+export async function selectRestaurants(input: unknown, req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
   signal.throwIfAborted();
-
-  // 2. 距離を計算して半径・条件で絞り込み
-  const filtered = candidates
-    .map((c) => ({
-      c,
-      distance: c.location ? distanceMeters(req.location, c.location) : null,
-    }))
-    .filter(({ distance }) => distance !== null && distance <= req.radiusMeters)
-    .filter(({ c }) => req.cuisine === null || c.cuisineLabel === req.cuisine)
-    .filter(({ c }) =>
-      req.budgetMaxYen === null ||
-      (c.budgetYen !== null && c.budgetYen <= req.budgetMaxYen));
-
-  // 3. 判定（後藤さんの classifyCandidates と合意できるまでは仮：全部採用・ラベルなし）
-  // const decisions = await classifyCandidates(filtered.map(f => f.c), config);
-
-  // 4. 並べ替え → 5件 → 公開用の型に変換
-  const restaurants: Restaurant[] = filtered
-    .sort((a, b) => a.distance! - b.distance!)
-    .slice(0, MAX_RESULTS)
-    .map(({ c, distance }) => toRestaurant(c, distance));
-
+  const candidates = cleanseCandidates(input)
+    .map((c) => ({ ...c, distanceMeters: c.location ? distanceMeters(req.location, c.location) : null }))
+    .filter((c) => c.distanceMeters !== null && c.distanceMeters <= req.radiusMeters);
+  const decisions = new Map((await classifyCandidates(candidates, { searchLocation: req.location })).map((d) => [d.id, d]));
+  signal.throwIfAborted();
+  const eligible = candidates.flatMap((candidate) => {
+    const decision = decisions.get(candidate.id);
+    if (!decision?.selected || (req.openNow && candidate.isOpenNow !== true)) return [];
+    const { localDishes, menuItems, isChain, ...restaurant } = candidate;
+    void localDishes; void menuItems; void isChain;
+    return [{ restaurant: { ...restaurant, labels: decision.labels, recommendationReason: decision.recommendationReason },
+      dishes: decision.evidence.map((e) => e.dish).join(" ") }];
+  }).sort((a, b) => a.restaurant.distanceMeters! - b.restaurant.distanceMeters!);
+  const restaurants = orderByMood(eligible, req.mood, (item) => `${item.dishes} ${item.restaurant.cuisineLabel ?? ""}`)
+    .slice(0, 5).map(({ restaurant }) => restaurant);
   return { restaurants, returnedCount: restaurants.length };
 }
 
-function toRestaurant(c: CandidateRestaurant, distance: number | null): Restaurant {
-  return {
-    id: c.id,
-    name: c.name,
-    location: c.location,
-    address: c.address,
-    distanceMeters: distance === null ? null : Math.round(distance),
-    rating: c.rating,
-    reviewCount: c.reviewCount,
-    photoUrl: null,
-    priceLevel: c.priceLevel,
-    isOpenNow: c.isOpenNow,
-    cuisineLabel: c.cuisineLabel,
-    labels: [],                      // 判定結果が来たらそこから
-    recommendationReason: null,      // 根拠がなければ null（捏造しない）
-    googleMapsUrl: null,
-    attributions: [],
-    photoAttributions: [],
-  };
+export async function searchRestaurants(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
+  return selectRestaurants(await fetchMockCandidates(req, signal), req, signal);
 }

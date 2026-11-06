@@ -2,7 +2,7 @@ import type { Location, PreviewScenario, Restaurant, SearchRequest, SearchRespon
 import { SearchFailure } from "./search";
 
 export const DEMO_LOCATION: Location = { latitude: 35.6812, longitude: 139.7671 };
-export const DEFAULT_FILTERS = { radiusMeters: 1000 as const, cuisine: null, budgetMaxYen: null };
+export const DEFAULT_FILTERS = { radiusMeters: 1000 as const, mood: "", openNow: false };
 const base: Restaurant = {
   id: "mock-001", name: "【架空】路地裏のごはん こむぎ",
   location: { latitude: 35.683, longitude: 139.769 },
@@ -12,10 +12,10 @@ const base: Restaurant = {
   recommendationReason: "架空のメニュー情報に、地域の食材を使った郷土料理の定食が記載されています。",
   googleMapsUrl: null, attributions: [], photoAttributions: [],
 };
-const fixtures: { restaurant: Restaurant; budgetYen: number }[] = [
-  { restaurant: base, budgetYen: 1200 },
-  { restaurant: { ...base, id: "mock-002", name: "【架空】手打ちそば 風待ち", location: { latitude: 35.686, longitude: 139.765 }, cuisineLabel: "そば・うどん", rating: 4.1, reviewCount: 38, isOpenNow: false, priceLevel: "inexpensive", labels: ["手打ちそば"], recommendationReason: "架空の店舗紹介に、店内で手打ちするそばを提供すると記載されています。", address: "架空の住所：風待ち町2丁目（開発用）" }, budgetYen: 900 },
-  { restaurant: { ...base, id: "mock-003", name: "【架空】喫茶 日和", location: { latitude: 35.677, longitude: 139.771 }, cuisineLabel: "カフェ", rating: null, reviewCount: 0, isOpenNow: null, priceLevel: null, labels: [], recommendationReason: "架空のメニュー情報に、自家製プリンとコーヒーが記載されています。", address: null }, budgetYen: 700 },
+const fixtures: { restaurant: Restaurant }[] = [
+  { restaurant: base },
+  { restaurant: { ...base, id: "mock-002", name: "【架空】手打ちそば 風待ち", location: { latitude: 35.686, longitude: 139.765 }, cuisineLabel: "そば・うどん", rating: 4.1, reviewCount: 38, isOpenNow: false, priceLevel: "inexpensive", labels: ["手打ちそば"], recommendationReason: "架空の店舗紹介に、店内で手打ちするそばを提供すると記載されています。", address: "架空の住所：風待ち町2丁目（開発用）" } },
+  { restaurant: { ...base, id: "mock-003", name: "【架空】喫茶 日和", location: { latitude: 35.677, longitude: 139.771 }, cuisineLabel: "カフェ", rating: null, reviewCount: 0, isOpenNow: null, priceLevel: null, labels: [], recommendationReason: "架空のメニュー情報に、自家製プリンとコーヒーが記載されています。", address: null } },
 ];
 
 export function distanceMeters(a: Location, b: Location): number {
@@ -28,9 +28,7 @@ export function distanceMeters(a: Location, b: Location): number {
 export function previewResults(request: SearchRequest, scenario: PreviewScenario): SearchResponse {
   if (scenario === "error") throw new SearchFailure("検索エラーのデモです。条件を残したまま再試行できます。確認用の状態を「通常」に戻してください。");
   if (scenario === "empty") return { restaurants: [], returnedCount: 0 };
-  const restaurants = fixtures.filter(({ restaurant, budgetYen }) =>
-    (!request.cuisine || request.cuisine === restaurant.cuisineLabel)
-    && (request.budgetMaxYen === null || budgetYen <= request.budgetMaxYen))
+  const restaurants = fixtures
     .map(({ restaurant }) => ({ ...restaurant, distanceMeters: distanceMeters(request.location, restaurant.location!) }))
     .filter((place) => place.distanceMeters <= request.radiusMeters)
     .map((place) => scenario === "missing" ? { ...place, rating: null, reviewCount: null, priceLevel: null, address: null, isOpenNow: null, cuisineLabel: null, distanceMeters: null, recommendationReason: null, labels: [] } : place);

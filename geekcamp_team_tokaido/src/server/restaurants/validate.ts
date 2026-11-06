@@ -1,12 +1,10 @@
-import type { SearchRequest } from "@/types/restaurants";
+import { MOOD_LIMIT, type SearchRequest } from "../../types/restaurants";
 
 export type ParseResult =
   | { ok: true; value: SearchRequest }
   | { ok: false; message: string };
 
 const RADIUS_VALUES = [500, 1000, 3000] as const;
-// ⚠️ ジャンルの許可リストは未確定。仮置き（ふらさんの選択肢と同期が必要）
-const CUISINE_VALUES = ["和食", "ラーメン", "郷土料理"] as const;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -20,11 +18,13 @@ export function parseSearchRequest(body: unknown): ParseResult {
   if (!isObject(body)) return fail("リクエストはオブジェクトで送信してください。");
 
   // 「省略」と「null」を区別：キー自体が無いのは不正
-  for (const key of ["location", "radiusMeters", "cuisine", "budgetMaxYen"]) {
+  for (const key of ["location", "radiusMeters", "mood", "openNow"]) {
     if (!(key in body)) return fail(`${key} は必須です。`);
   }
 
-  const { location, radiusMeters, cuisine, budgetMaxYen } = body;
+  if (Object.keys(body).some((key) => !["location", "radiusMeters", "mood", "openNow"].includes(key)))
+    return fail("未対応の検索条件です。");
+  const { location, radiusMeters, mood, openNow } = body;
 
   if (!isObject(location)) return fail("location が不正です。");
   const { latitude, longitude } = location;
@@ -36,12 +36,9 @@ export function parseSearchRequest(body: unknown): ParseResult {
   if (!RADIUS_VALUES.includes(radiusMeters as never))   // "1000"（文字列）はここで弾かれる
     return fail("radiusMeters は 500 / 1000 / 3000 のいずれかです。");
 
-  if (cuisine !== null && !CUISINE_VALUES.includes(cuisine as never))
-    return fail("cuisine が不正です。");               // 空文字 "" もここで弾かれる
-
-  if (budgetMaxYen !== null &&
-      !(Number.isSafeInteger(budgetMaxYen) && (budgetMaxYen as number) > 0))
-    return fail("budgetMaxYen は正の整数か null です。");
+  if (typeof mood !== "string" || mood.length > MOOD_LIMIT)
+    return fail(`mood は${MOOD_LIMIT}文字以内の文字列です。`);
+  if (typeof openNow !== "boolean") return fail("openNow は真偽値です。");
 
   return {
     ok: true,
@@ -49,8 +46,8 @@ export function parseSearchRequest(body: unknown): ParseResult {
     value: {
       location: { latitude, longitude },
       radiusMeters: radiusMeters as SearchRequest["radiusMeters"],
-      cuisine: cuisine as string | null,
-      budgetMaxYen: budgetMaxYen as number | null,
+      mood: mood.trim(),
+      openNow,
     },
   };
 }
