@@ -2,12 +2,13 @@ import type { Location, PreviewScenario, Restaurant } from "./restaurant-types";
 import { searchRestaurants } from "./search";
 import { searchCandidatePreview } from "./preview";
 
-// UI-only contract. The legacy server payload stays unchanged.
-export const MOOD_LIMIT = 150;
-export type Conditions = { radiusMeters: 500 | 1000 | 3000; mood: string; openNow: boolean };
+import { MOOD_LIMIT, type SearchConditions } from "../../types/restaurants";
+import { orderByMood } from "../../lib/restaurants/mood";
+export { MOOD_LIMIT };
+export type Conditions = SearchConditions;
 export const INITIAL_CONDITIONS: Conditions = { radiusMeters: 1000, mood: "", openNow: false };
 export type Mode = "live" | "demo";
-export type CandidateBatch = { candidates: Restaurant[]; scope: "returned" | "demo-pool" };
+export type CandidateBatch = { candidates: Restaurant[]; scope: "server-results" | "demo-pool" };
 export type DiscoveryResult = {
   batch: CandidateBatch; displayed: Restaurant[]; eligibleCount: number;
   applied: Conditions; location: Location; mode: Mode; scenario: PreviewScenario; notice: string | null;
@@ -17,34 +18,25 @@ export type Acquire = (request: DiscoveryRequest, signal: AbortSignal) => Promis
 export type Rank = (candidates: Restaurant[], mood: string, signal: AbortSignal) => Promise<Restaurant[]>;
 
 export const acquireCandidates: Acquire = async (request, signal) => {
-  // Mood is deliberately never a retrieval keyword. Do not switch to Text Search.
-  const payload = { location: request.location, radiusMeters: request.conditions.radiusMeters, cuisine: null, budgetMaxYen: null };
-  if (request.mode === "demo") return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool" };
+  const payload = { location: request.location, ...request.conditions };
+  // Normal demo also traverses the real HTTP / classification pipeline at fixed coordinates.
+  if (request.mode === "demo" && request.scenario !== "success")
+    return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool" };
   const response = await searchRestaurants(payload, signal);
-  // This endpoint currently returns only its recommended subset, not the complete pool.
-  return { candidates: response.restaurants, scope: "returned" };
+  return { candidates: response.restaurants, scope: "server-results" };
 };
 
 // Conservative, local ordering based only on supplied cuisine, never generated prose.
 // Unrecognized intent and missing cuisine keep their original relative order.
 export const rankByMood: Rank = async (candidates, mood, signal) => {
   signal.throwIfAborted();
-  if (!mood.trim() || /以外|苦手|嫌い|食べたくない|避け|なしで/.test(mood)) return [...candidates];
-  const groups = [
-    { intent: /麺|そば|うどん|ラーメン/, cuisine: /そば|うどん|ラーメン|麺/ },
-    { intent: /和食/, cuisine: /和食/ },
-    { intent: /カフェ|コーヒー|喫茶/, cuisine: /カフェ|喫茶/ },
-    { intent: /郷土料理/, cuisine: /郷土料理/ },
-    { intent: /焼肉/, cuisine: /焼肉/ },
-  ].filter((group) => group.intent.test(mood));
-  const score = (r: Restaurant) => Number(r.cuisineLabel !== null && groups.some((group) => group.cuisine.test(r.cuisineLabel!)));
-  return candidates.map((restaurant, index) => ({ restaurant, index, score: score(restaurant) }))
-    .sort((a, b) => b.score - a.score || a.index - b.index).map(({ restaurant }) => restaurant);
+  return orderByMood(candidates, mood, (r) => r.cuisineLabel ?? "");
 };
 
 export function candidateKey(request: DiscoveryRequest) {
   return [request.mode, request.location.latitude, request.location.longitude, request.conditions.radiusMeters,
-    request.mode === "demo" ? request.scenario : "live"].join(":");
+    request.mode === "demo" ? request.scenario : "live",
+    ...(request.mode === "demo" && request.scenario !== "success" ? [] : [request.conditions.mood, request.conditions.openNow])].join(":");
 }
 
 /** Owns a single in-memory candidate set. No coordinates or mood are persisted. */
@@ -72,6 +64,11 @@ export class DiscoverySession {
       const batch = !refresh && this.cached?.key === key ? this.cached.batch : await this.acquire(request, signal);
       ensureCurrent();
       this.cached = { key, batch };
+      if (batch.scope === "server-results") {
+        return { batch, displayed: batch.candidates, eligibleCount: batch.candidates.length,
+          applied: { ...request.conditions, mood: request.conditions.mood.trim() },
+          location: request.location, mode: request.mode, scenario: request.scenario, notice: null };
+      }
       const eligible = batch.candidates.filter((r) => !request.conditions.openNow || r.isOpenNow === true);
       let ranked = eligible;
       let notice: string | null = null;

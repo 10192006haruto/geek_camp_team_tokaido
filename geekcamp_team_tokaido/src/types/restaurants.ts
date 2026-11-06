@@ -1,11 +1,12 @@
 /** 検索APIでフロントエンドとサーバーが共有するリクエスト・レスポンスの型。 */
 export type Location = { latitude: number; longitude: number };
-export type SearchRequest = {
-  location: Location;
+export const MOOD_LIMIT = 150;
+export type SearchConditions = {
   radiusMeters: 500 | 1000 | 3000;
-  cuisine: string | null;
-  budgetMaxYen: number | null;
+  mood: string;
+  openNow: boolean;
 };
+export type SearchRequest = SearchConditions & { location: Location };
 export type Attribution = {
   text: string;
   url: string | null;

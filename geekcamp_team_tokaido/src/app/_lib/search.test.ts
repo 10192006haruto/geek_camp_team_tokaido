@@ -5,13 +5,9 @@ import { locationErrorMessage, parseSearchResponse, safeExternalUrl, searchResta
 
 const request = { ...DEFAULT_FILTERS, location: DEMO_LOCATION };
 
-test("preview respects radius, cuisine and an explicit yen budget", () => {
+test("preview respects radius; condition selection belongs to the search pipeline", () => {
   assert.equal(previewResults(request, "success").returnedCount, 3);
   assert.equal(previewResults({ ...request, radiusMeters: 500 }, "success").returnedCount, 1);
-  const filtered = previewResults({ ...request, cuisine: "カフェ", budgetMaxYen: 1000 }, "success");
-  assert.equal(filtered.returnedCount, 1);
-  assert.equal(filtered.restaurants[0].cuisineLabel, "カフェ");
-  assert.equal(previewResults({ ...request, cuisine: "和食", budgetMaxYen: 1000 }, "success").returnedCount, 0);
   assert.equal(previewResults({ ...request, location: { latitude: 0, longitude: 0 } }, "success").returnedCount, 0);
   assert.equal(distanceMeters(DEMO_LOCATION, DEMO_LOCATION), 0);
 });

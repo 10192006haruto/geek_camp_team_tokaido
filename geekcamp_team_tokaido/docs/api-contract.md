@@ -1,17 +1,17 @@
-# 検索API契約（実装予定）
+# 検索API契約
 
-今回の成果物は文書のみです。エンドポイント・共有TypeScriptファイル・モックはまだ存在しません。以下は初期実装の契約案で、外部API対応済みを意味しません。
+3条件版の実装契約です。店舗取得は東京駅周辺の架空店舗を使うモックです。外部APIは呼びません。
 
 ## HTTPとリクエスト
 
-`POST /api/restaurants/search`、リクエスト・レスポンスは`application/json`。距離はm、予算は円。任意条件もキーは必須とし、指定なしを`null`に統一します。省略・空文字・文字列の数値は受理しません。
+`POST /api/restaurants/search`、リクエスト・レスポンスは`application/json`。距離はm。全キー必須です。気分の指定なしは空文字、営業条件の指定なしはfalseです。旧条件・未知のトップレベルキーは400で拒否します。
 
 ```json
 {
   "location": { "latitude": 35.6812, "longitude": 139.7671 },
   "radiusMeters": 1000,
-  "cuisine": null,
-  "budgetMaxYen": null
+  "mood": "",
+  "openNow": false
 }
 ```
 
@@ -20,23 +20,33 @@
 | location | object | 必須、null不可 |
 | location.latitude | number | 有限数、-90〜90 |
 | location.longitude | number | 有限数、-180〜180 |
-| radiusMeters | 500 | 1000 | 3000 | 必須、許可値のみ |
-| cuisine | string | null | 指定なしはnull。指定時は対応ジャンルの許可リストに含まれる値 |
-| budgetMaxYen | number | null | 指定なしはnull。指定時は正の安全な整数 |
+| radiusMeters | `500 / 1000 / 3000` | 必須、許可値のみ |
+| mood | string | JS文字列長で0〜150（UTF-16コード単位）。null不可。長さを検証後、前後空白を除く |
+| openNow | boolean | trueなら営業中と確認できる店のみ。falseなら営業状態では除外しない |
 
-ジャンルの許可リスト・予算UIの選択肢は未確定で、実装時に共有型・モック・本書を同期します。`priceLevel`から円建て予算への変換はしません。予算・ジャンルによる実API検索の対応可否は確認が必要です。
+ジャンル・予算の検索条件は廃止しました。`cuisineLabel`・`priceLevel`は店舗の表示情報として残します。
 
-## 共有TypeScript型の案
+### 検索順序
 
-実装時の配置予定：`src/types/restaurants.ts`。サーバー専用コードをimportしません。下記に`?`はなく、全キー必須です。
+1. 半径内の候補を取得・正規化。店舗座標不明は半径を確認できないため除外。
+2. 検索位置の都道府県に合う料理と、その店での提供根拠を判定。
+3. openNow=trueならisOpenNow=trueだけを残す。null・falseは除外。
+4. 直線距離順を基本に、料理名・ジャンルで気分に一致する店を優先。同順位は距離順、同距離は入力順。
+5. 最後に最大5件へ制限。returnedCountは返却件数で、全候補数ではない。
+
+気分は除外条件ではありません。麺・和食・カフェ・郷土料理・焼肉の定型判定を使い、未対応の表現（例：がっつり）・否定表現・空欄は距離順です。生成された推薦文を並べ替えの根拠にしません。ご当地判定を満たさない店舗で件数を埋めません。
+
+## 共有TypeScript型
+
+配置：`src/types/restaurants.ts`。サーバー専用コードをimportしません。下記に`?`はなく、全キー必須です。
 
 ```ts
 export type Location = { latitude: number; longitude: number };
 export type SearchRequest = {
   location: Location;
   radiusMeters: 500 | 1000 | 3000;
-  cuisine: string | null;
-  budgetMaxYen: number | null;
+  mood: string;
+  openNow: boolean;
 };
 export type Attribution = {
   text: string;
@@ -102,7 +112,7 @@ export type SearchError = {
 
 ### 架空店舗の成功例
 
-以下の店舗は架空です。座標・評価等もモック値で、実在店舗への推薦ではありません。レビュー少なめの基準を決定する例ではありません。
+以下の店舗は架空です。座標・評価等もモック値で、実在店舗への推薦ではありません。料理の提供・地域性の根拠も架空のテストデータです。
 
 ```json
 {
@@ -119,8 +129,8 @@ export type SearchError = {
       "priceLevel": null,
       "isOpenNow": null,
       "cuisineLabel": "和食",
-      "labels": [],
-      "recommendationReason": "モックデータ上の評価は4.3、レビュー数は24件です。",
+      "labels": ["ご当地料理"],
+      "recommendationReason": "東京名物の深川めしを提供",
       "googleMapsUrl": null,
       "attributions": [],
       "photoAttributions": []

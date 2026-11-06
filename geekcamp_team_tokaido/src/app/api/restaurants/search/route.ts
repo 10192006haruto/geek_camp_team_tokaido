@@ -10,7 +10,7 @@ function errorResponse(status: number, code: SearchErrorCode, message: string, h
 export async function POST(request: Request) {
   // 1. Content-Type
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().startsWith("application/json")) {
+  if (!(contentType.split(";")[0].trim().toLowerCase() === "application/json")) {
     return errorResponse(415, "UNSUPPORTED_MEDIA_TYPE", "application/json で送信してください。");
   }
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   try {
     const result: SearchResponse = await searchRestaurants(parsed.value, request.signal);
     return Response.json(result);
-  } catch (e) {
+  } catch {
     // 例：独自のエラークラスで 502 / 503 / 504 を振り分け、それ以外は 500
     return errorResponse(500, "INTERNAL_ERROR", "検索中にエラーが発生しました。");
   }
@@ -41,4 +41,4 @@ export async function POST(request: Request) {
 // 7. POST 以外も契約どおり JSON で 405
 const methodNotAllowed = () =>
   errorResponse(405, "METHOD_NOT_ALLOWED", "POST で送信してください。", { Allow: "POST" });
-export { methodNotAllowed as GET, methodNotAllowed as PUT, methodNotAllowed as PATCH, methodNotAllowed as DELETE };
+export { methodNotAllowed as GET, methodNotAllowed as PUT, methodNotAllowed as PATCH, methodNotAllowed as DELETE, methodNotAllowed as HEAD, methodNotAllowed as OPTIONS };
