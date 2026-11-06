@@ -1,3 +1,4 @@
+/** 検索APIでフロントエンドとサーバーが共有するリクエスト・レスポンスの型。 */
 export type Location = { latitude: number; longitude: number };
 export type SearchRequest = {
   location: Location;
