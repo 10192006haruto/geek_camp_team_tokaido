@@ -1,6 +1,6 @@
 # アーキテクチャと担当境界
 
-> 2026-11-07更新（Yuuto）：検索APIをクチコミ料理抽出の経路へ切り替えました。仕様は[MVP仕様](review-dishes-mvp-spec.md)、公開契約は[API契約](api-contract.md)、受け渡しの型は[型と受け渡しの案](review-menu-inference-proposal.md)を参照してください。実店舗での`places`の動作は未確認です。
+> 2026-11-07更新（Yuuto）：検索APIをクチコミ料理抽出の経路へ切り替えました。仕様は[MVP仕様](review-dishes-mvp-spec.md)、公開契約は[API契約](api-contract.md)、受け渡しの型は[型と受け渡しの案](review-menu-inference-proposal.md)を参照してください。実データ（東京駅・半径1km）で、`places`の検索・写真の表示まで確認済みです（2026-11-07）。
 
 ## 現在の接続
 
@@ -44,7 +44,7 @@ UI（範囲・気分・営業中のみ）
 - 取得と抽出は同じ10秒の期限を共有します。最終候補の写真取得には別途最大3秒を確保し、抽出が期限切れになっても途中結果に写真を付けられるようにします（検索全体は最大約13秒）。利用者の中断は写真取得にも伝えます。`PlacesSearchError`・`MenuInferenceError`の`code`をroute.tsで502/503/504へ変換します。利用者の中断はAbortErrorとして扱います。
 - `places`でキー未設定・権限不足のときは503で、モックへは切り替えません。取得元が未設定の場合、開発中のみモックを使います。
 
-Nearby Searchは`places.reviews`を含むためEnterprise + Atmosphereの料金区分です。クチコミの表示・保存・Geminiへの送信に関する利用条件は未確認です。
+Nearby Searchは`places.reviews`を含むためEnterprise + Atmosphereの料金区分です。利用規約で確認した内容（帰属表示・保存しないこと・Geminiは有料プランのキーを使うこと・未解決の点）は[README](../README.md#利用規約で確認したこと2026-11-07)にまとめています。
 
 ## 状態と競合
 

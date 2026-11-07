@@ -1,6 +1,6 @@
 # 検索API契約
 
-> 2026-11-07更新（Yuuto）：検索APIをクチコミ料理抽出の経路へ切り替えました。取得元は`RESTAURANT_DATA_SOURCE`で`places`（Nearby Search＋Gemini）と`mock`（架空データ）を選びます（[README](../README.md#店舗データの取得元モック実api)）。ご当地判定は現在の検索経路では使いません。仕様の背景は[MVP仕様](review-dishes-mvp-spec.md)、受け渡しの型は[型と受け渡しの案](review-menu-inference-proposal.md)を参照してください。実店舗での`places`の動作は未確認です。
+> 2026-11-07更新（Yuuto）：検索APIをクチコミ料理抽出の経路へ切り替えました。取得元は`RESTAURANT_DATA_SOURCE`で`places`（Nearby Search＋Gemini）と`mock`（架空データ）を選びます（[README](../README.md#店舗データの取得元モック実api)）。ご当地判定は現在の検索経路では使いません。仕様の背景は[MVP仕様](review-dishes-mvp-spec.md)、受け渡しの型は[型と受け渡しの案](review-menu-inference-proposal.md)を参照してください。実データ（東京駅・半径1km）で、`places`の検索・写真の表示まで確認済みです（2026-11-07）。
 
 ## HTTPとリクエスト
 
