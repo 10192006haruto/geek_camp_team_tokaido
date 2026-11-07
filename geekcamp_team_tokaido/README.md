@@ -60,14 +60,31 @@ package.jsonのあるアプリルートでnpm ci、npm run devを実行し、htt
 | RESTAURANT_DATA_SOURCE | 動作 | 必要なキー |
 |---|---|---|
 | `mock` | 架空店舗と固定の抽出結果。外部通信なし | なし |
-| `places` | Nearby Search と Gemini を実際に呼ぶ（**有料APIの利用が発生**） | `GOOGLE_PLACES_API_KEY`、`GEMINI_API_KEY` |
+| `places` | Nearby Search・Place Photos・Gemini を実際に呼ぶ（**有料APIの利用が発生**。下の「料金の目安」） | `GOOGLE_PLACES_API_KEY`、`GEMINI_API_KEY` |
 | 未設定 | 開発中は`mock`。本番（`NODE_ENV=production`）では503 | — |
 
 - モックは東京駅周辺の店舗だけを返すため、離れた現在地では0件です。
 - `places`でキーが未設定・権限不足（403）・利用上限（429）のときは503を返し、モックへは切り替えません。
-- 検索全体（Places＋Gemini＋照合）の期限は10秒で、超えると504です。
-- Places は`places.reviews`を含むため Nearby Search Enterprise + Atmosphere の料金区分です。Google Cloud で Places API (New) を有効にし、1日の割り当て上限を設定してから使ってください（料金の根拠は[型と受け渡しの案](docs/review-menu-inference-proposal.md)）。
+- 候補取得・料理抽出・照合の期限は10秒で、確認できた店舗が1件もなければ504です。その後、最終候補の写真取得に最大3秒を使うため、検索全体は最大約13秒です（フロントの待機上限は15秒）。
+- Google Cloud で Places API (New) を有効にし、1日の割り当て上限を設定してから使ってください。
 - サーバーキーに`NEXT_PUBLIC_`を付けません。`.env.local`は両階層の`.gitignore`で除外され、`.env.example`だけを追跡します。`.env.example`にはダミー値以外を書きません。
+
+### 料金の目安（`places`、1回の検索あたり）
+
+2026-11-07時点の[Google Maps Platform 価格表](https://developers.google.com/maps/billing-and-pricing/pricing#places-pricing)と[Gemini API 料金](https://aistudio.google.com/docs/pricing)によります（米ドル）。価格は変わることがあるため、利用前に公式ページを確認してください。
+
+| API（料金区分） | 1回の検索で呼ぶ回数 | 毎月の無料枠 | 無料枠を超えた単価 | 1回の検索あたり |
+|---|---|---|---|---|
+| Nearby Search（Enterprise + Atmosphere。`places.reviews`を含むため） | 1回 | 1,000回 | $40 / 1,000回 | 約$0.040 |
+| Place Photos（Place Details Photos） | 最大5回（表示する店舗ごとに1枚） | 1,000回 | $7 / 1,000回 | 最大約$0.035 |
+| Gemini 3.5 Flash-Lite | 5店舗ずつ最大4回（500・503は1回だけ再送） | 無料プランは無料 | 入力$0.30・出力$2.50 / 100万トークン | 有料プランで約$0.017 |
+
+- 無料枠で月に検索できる回数の目安は、**Place Photos で約200回**（1,000回 ÷ 5枚）、Nearby Search で約1,000回です。先に写真の無料枠が尽きます。
+- 無料枠を超えた場合、Places の費用は1回の検索あたり最大約$0.075です。
+- Gemini の見積もりは、東京駅・半径1km（20店舗・クチコミ90件）の実測で、1バッチあたり入力約5,700トークン・出力約1,000トークンだったことをもとにした概算です。
+- Gemini の無料プランでは、送信した内容が Google のサービス改善に使われます（有料プランでは使われません）。クチコミ本文を送るため、利用条件の確認が必要です。
+- 全国チェーンは Gemini に送る前に除外するため、そのぶん Gemini の呼び出し量は減ります。写真は料理を確認できた最終候補（最大5件）だけ取得します。
+- 料金の比較（Place Details を使わず Nearby Search だけでクチコミを取る理由）は[型と受け渡しの案](docs/review-menu-inference-proposal.md)を参照してください。
 
 ### 確認コマンド
 
