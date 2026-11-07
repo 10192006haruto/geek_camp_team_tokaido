@@ -1,8 +1,6 @@
 # 検索API契約
 
-> 最新の担当分離：Nearby取得・検索APIへの接続はYuuto担当として今回の変更から外しました。ふら側は取得済み最大20候補を受け取るprepareReviewResultsと、最終5件の選定・表示までです。通常検索は旧モックのままです。[現在の担当境界と検証記録](review-search-integration-2026-11-07.md)を優先してください。
-
-> 2026-11-07：ふら担当の料理抽出・画面側を実装し、公開型にinferredMenuを追加、フロント受理上限を5件に更新しました。Yuuto担当の検索APIは旧モック・最大5件のままで、inferredMenu=[]を返す互換状態です。以下の検索順序は既存経路です。新経路への接続事項は[実装・検証記録](review-dishes-implementation-2026-11-07.md)を参照してください。
+> 2026-11-07更新（Yuuto）：検索APIをクチコミ料理抽出の経路へ切り替えました。取得元は`RESTAURANT_DATA_SOURCE`で`places`（Nearby Search＋Gemini）と`mock`（架空データ）を選びます（[README](../README.md#店舗データの取得元モック実api)）。ご当地判定は現在の検索経路では使いません。仕様の背景は[MVP仕様](review-dishes-mvp-spec.md)、受け渡しの型は[型と受け渡しの案](review-menu-inference-proposal.md)を参照してください。実店舗での`places`の動作は未確認です。
 
 ## HTTPとリクエスト
 
@@ -30,13 +28,16 @@
 
 ### 検索順序
 
-1. 半径内の候補を取得・正規化。店舗座標不明は半径を確認できないため除外。
-2. 検索位置の都道府県に合う料理と、その店での提供根拠を判定。
-3. openNow=trueならisOpenNow=trueだけを残す。null・falseは除外。
-4. 直線距離順を基本に、料理名・ジャンルで気分に一致する店を優先。同順位は距離順、同距離は入力順。
-5. 最後に最大5件へ制限。returnedCountは返却件数で、全候補数ではない。
+1. 候補を取得・正規化。`places`ではNearby Searchで半径内を距離順に最大20店舗、各最大5件のクチコミを取得。`mock`では架空店舗。
+2. クチコミから料理名と根拠の引用を抽出（`places`はGeminiで1回にまとめて抽出、`mock`は固定値）。
+3. 引用が該当クチコミ本文の部分文字列で、料理名を含むかを照合。満たさない根拠・料理は捨て、料理が残らない店舗は返さない。
+4. 店舗座標不明・半径外を除外。openNow=trueならisOpenNow=trueだけを残す。null・falseは除外。
+5. 直線距離順を基本に、抽出した料理名・ジャンルで気分に一致する店を優先。同順位は距離順、同距離はID順。
+6. 最後に最大5件へ制限。returnedCountは返却件数で、全候補数ではない。
 
-気分は除外条件ではありません。麺・和食・カフェ・郷土料理・焼肉の定型判定を使い、未対応の表現（例：がっつり）・否定表現・空欄は距離順です。生成された推薦文を並べ替えの根拠にしません。ご当地判定を満たさない店舗で件数を埋めません。
+気分は除外条件ではありません。麺・和食・カフェ・郷土料理・焼肉の定型判定を使い、未対応の表現（例：がっつり）・否定表現・空欄は距離順です。生成された推薦文を並べ替えの根拠にしません。料理を抽出できない店舗で件数を埋めません。「料理を提供していない」とも判断しません。
+
+`places`では取得・抽出・照合の全体に10秒の期限があります。呼び出しごとに期限を延長せず、自動再試行もしません。
 
 ## 共有TypeScript型
 
@@ -104,7 +105,7 @@ export type SearchError = {
 
 | 項目 | 意味・制約 |
 | --- | --- |
-| restaurants | 公開型・フロント受理上限5件。既存検索APIは最大5件。該当なしは空配列 |
+| restaurants | 最大5件。該当なしは空配列 |
 | returnedCount | 0〜5の整数、restaurants.lengthと一致 |
 | id / name | 空でない識別子／店名。必須情報を欠く候補は返さない |
 | location | 店舗座標。不明ならオブジェクト全体をnull |
@@ -116,46 +117,61 @@ export type SearchError = {
 | priceLevel | 価格帯、不明はnull。「moderate」などを円の金額として表示しない |
 | isOpenNow | true＝営業中、false＝営業していない、null＝不明。閉業とは区別 |
 | cuisineLabel | 表示用ジャンル、不明はnull |
-| inferredMenu | 必須配列。料理は最大10品、各料理に1〜5件の引用。旧モック・判定経路では[]。新しいレビュー経路は1品以上の店を返す予定 |
-| labels | 根拠のあるラベルの配列。付与なしは[] |
-| recommendationReason | 取得情報に裏付けられた理由。根拠不足はnull |
+| inferredMenu | クチコミで言及された料理。返却する店舗では常に1品以上（最大10品）、各料理に照合済みの引用1〜5件。投稿者・リンク・日時はモデルではなく取得データから付与 |
+| labels | 根拠のあるラベルの配列。現在の経路では地域性ラベルを付けず[] |
+| recommendationReason | 照合済み情報に基づく定型文（例：「クチコミに○○の言及あり」）。根拠不足はnull |
 | googleMapsUrl | 検証したGoogle Mapsリンク、取得できない場合はnull |
-| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。モックでは[] |
+| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。現在は店舗単位の帰属・写真を取得しておらず`places`・`mock`とも[]。クチコミの投稿者はinferredMenuの各引用のauthorで返す |
 
 不明値を0・空文字に置き換えません。根拠のないラベルや推薦文を生成して件数を埋めません。実APIで要求される帰属は表示まで引き継ぎます。この帰属形式だけで規約を満たすかは未確認で、接続時に拡張が必要となる可能性があります。URLは利用可能なスキーム・送信先を検証し、外部HTMLをそのまま描画しません。
 
 ### 架空店舗の成功例
 
-以下の店舗は架空です。座標・評価等もモック値で、実在店舗への推薦ではありません。料理の提供・地域性の根拠も架空のテストデータです。
+以下は`mock`の出力から1件を抜き出したものです（座標・距離は桁を省略）。店舗・クチコミ・投稿者はすべて架空で、実在店舗への推薦ではありません。
 
 ```json
 {
   "restaurants": [
     {
-      "id": "mock-place-001",
-      "name": "【架空】ここメシ食堂",
-      "location": { "latitude": 35.683, "longitude": 139.769 },
+      "id": "mock-place-5",
+      "name": "【架空】定食 とうかいどう",
+      "location": { "latitude": 35.68389, "longitude": 139.7671 },
       "address": "架空の住所（開発用データ）",
-      "distanceMeters": 264,
-      "rating": 4.3,
-      "reviewCount": 24,
+      "distanceMeters": 299.66,
+      "rating": 3.9,
+      "reviewCount": 41,
       "photoUrl": null,
       "priceLevel": null,
-      "isOpenNow": null,
-      "cuisineLabel": "和食",
-      "inferredMenu": [],
-      "labels": ["ご当地料理"],
-      "recommendationReason": "東京名物の深川めしを提供",
+      "isOpenNow": true,
+      "cuisineLabel": "定食屋",
       "googleMapsUrl": null,
       "attributions": [],
-      "photoAttributions": []
+      "photoAttributions": [],
+      "inferredMenu": [
+        {
+          "name": "生姜焼き定食",
+          "evidence": [
+            {
+              "quote": "生姜焼き定食を食べました。",
+              "author": { "text": "架空投稿者5-3", "url": null },
+              "reviewUrl": null,
+              "publishTime": "2026-11-01T03:00:00Z",
+              "authorPhotoUrl": null,
+              "originalText": null,
+              "translated": false
+            }
+          ]
+        }
+      ],
+      "labels": [],
+      "recommendationReason": "クチコミに生姜焼き定食の言及あり"
     }
   ],
   "returnedCount": 1
 }
 ```
 
-距離は例示の概数です。モック実装でも検索座標から計算し、半径条件を適用します。0件はHTTP 200で返します。
+モックでも検索座標から距離を計算し、半径条件を適用します。0件はHTTP 200で返します。
 
 ```json
 { "restaurants": [], "returnedCount": 0 }
@@ -177,11 +193,11 @@ export type SearchError = {
 | 400 | INVALID_REQUEST | JSON破損、必須項目欠落、型・範囲・許可値の不正 |
 | 405 | METHOD_NOT_ALLOWED | POST以外。Allow: POSTを付与 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | application/json以外 |
-| 502 | SEARCH_FAILED | 外部店舗サービスの失敗・不正レスポンス |
-| 503 | SERVICE_UNAVAILABLE | 利用制限、設定不足、一時的に検索を提供できない |
-| 504 | UPSTREAM_TIMEOUT | 外部サービスのタイムアウト |
+| 502 | SEARCH_FAILED | Places・Geminiの失敗、不正なレスポンス・モデル応答 |
+| 503 | SERVICE_UNAVAILABLE | キー・モデル・取得元の設定不足、権限不足（401/403）、利用上限（429） |
+| 504 | UPSTREAM_TIMEOUT | 検索全体の10秒期限を超過 |
 | 500 | INTERNAL_ERROR | 想定外の内部障害 |
 
-アプリが返すエラーは上記JSON形状に統一する設計です。405もRoute Handlerで明示的に扱います。フレームワークやプロキシから非JSON応答が返る場合にもクライアントは汎用エラーを表示します。内部例外、外部APIの生レスポンス、キー、スタックトレースを利用者に返しません。
+抽出結果が0件（料理の言及なし）は200の空配列で、上記の失敗とは区別します。`places`の失敗時にモックへ切り替えません。全レスポンスに`Cache-Control: no-store`を付けます。アプリが返すエラーは上記JSON形状に統一する設計です。405もRoute Handlerで明示的に扱います。フレームワークやプロキシから非JSON応答が返る場合にもクライアントは汎用エラーを表示します。内部例外、外部APIの生レスポンス、キー、スタックトレースを利用者に返しません。
 
 位置情報の拒否・タイムアウト・取得不能はブラウザ側の状態であり、この検索APIのエラーコードとは分けます。失敗時も検索条件を維持して再試行できます。
