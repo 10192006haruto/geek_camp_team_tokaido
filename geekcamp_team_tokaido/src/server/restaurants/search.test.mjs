@@ -83,7 +83,7 @@ test("mood promotes a distant candidate before slicing; unknown/negative intent 
 });
 
 test("empty, out-of-radius, missing coordinates, cancellation and concurrent conditions", async () => {
-  assert.deepEqual(selectReviewRestaurants([], [], request), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(selectReviewRestaurants([], [], request), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
   assert.equal((await searchRestaurants({ ...request, location: { latitude: 0, longitude: 0 } }, signal)).returnedCount, 0);
   const candidates = await fetchMockReviewCandidates(request, signal);
   assert.equal(selectReviewRestaurants([{ ...candidates[0], location: null }], mockMenuInference(candidates), request).returnedCount, 0);
@@ -191,7 +191,7 @@ test("places mode: missing key is 503 and no-dish result is an empty 200", async
   stubFetch(t, { places: fakePlaces, gemini: fakeGemini([{ placeId: "fake-place-1", items: [] }]) });
   const empty = await livePost(request);
   assert.equal(empty.status, 200);
-  assert.deepEqual(await empty.json(), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(await empty.json(), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
 });
 
 test("places mode: one shared deadline turns a hanging upstream into 504", async (t) => {
@@ -207,11 +207,12 @@ test("places mode: one shared deadline turns a hanging upstream into 504", async
 
 // ---- Gemini の分割並行呼び出し ----
 const { inferMenusInBatches, INFERENCE_BATCH_SIZE } = await import("./search.ts");
-const manyPlaces = (n) => () => jsonResponse({ places: Array.from({ length: n }, (_, i) => ({
+const manyPlacesBody = (n) => ({ places: Array.from({ length: n }, (_, i) => ({
   id: `fake-${i}`, displayName: { text: `【架空】店${i}` }, location: { latitude: 35.6812 + i * 0.0001, longitude: 139.7671 },
   currentOpeningHours: { openNow: true },
   reviews: [{ text: { text: `定食${i}を食べました。`, languageCode: "ja" }, authorAttribution: { displayName: `架空投稿者${i}` } }],
 })) });
+const manyPlaces = (n) => () => jsonResponse(manyPlacesBody(n));
 // 送られてきた店舗IDごとに、その店のクチコミから料理を返す
 const echoGemini = (log) => (init) => {
   const body = JSON.parse(init.body);
@@ -232,29 +233,70 @@ test("places mode: 20 candidates are sent to Gemini in parallel batches and merg
   assert.ok(log.every((ids) => ids.length <= INFERENCE_BATCH_SIZE));
   assert.deepEqual(log.flat().sort(), Array.from({ length: 20 }, (_, i) => `fake-${i}`).sort());
   assert.equal(result.returnedCount, 5);
+  assert.equal(result.uncheckedCount, 0);
   assert.deepEqual(result.restaurants.map((r) => r.inferredMenu[0].name), ["定食0", "定食1", "定食2", "定食3", "定食4"]);
 });
 
-test("places mode: one failing batch fails the whole search and cancels siblings", async (t) => {
+// 指定したバッチ番号（送られてきた先頭の店舗IDで判定）だけ失敗させる Gemini
+const failingBatches = (failIds, failure) => (init) => {
+  const places = JSON.parse(JSON.parse(init.body).contents[0].parts[0].text).places;
+  return failIds.includes(places[0].placeId) ? failure(init) : echoGemini([])(init);
+};
+const hangUntilAbort = (init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)));
+
+test("partial: a failed batch is skipped, the rest is returned with uncheckedCount", async (t) => {
   withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
-  let calls = 0; let cancelled = 0;
-  stubFetch(t, { places: manyPlaces(10), gemini: (init) => {
-    calls += 1;
-    if (calls === 1) return jsonResponse({}, 400); // 400 は再試行されない
-    return new Promise((_, reject) => init.signal.addEventListener("abort", () => { cancelled += 1; reject(init.signal.reason); }));
-  } });
-  await assert.rejects(searchPlaces(request, signal), { code: "SEARCH_FAILED" });
-  assert.equal(calls, 2);
-  assert.equal(cancelled, 1);
+  // 先頭バッチ（近い5店舗）が失敗 → 6件目以降から選ぶ
+  stubFetch(t, { places: manyPlaces(10), gemini: failingBatches(["fake-0"], () => jsonResponse({}, 400)) });
+  const result = await searchPlaces(request, signal);
+  assert.equal(result.uncheckedCount, 5);
+  assert.deepEqual(result.restaurants.map((r) => r.id), ["fake-5", "fake-6", "fake-7", "fake-8", "fake-9"]);
+  // HTTP でも 200 と未確認数が返る
+  stubFetch(t, { places: manyPlaces(10), gemini: failingBatches(["fake-5"], () => jsonResponse({}, 503)) });
+  const response = await livePost(request);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.uncheckedCount, 5);
+  assert.equal(body.returnedCount, 5);
 });
 
-test("batching: empty input makes no Gemini call; deadline still maps to UPSTREAM_TIMEOUT", async (t) => {
+test("partial: deadline keeps finished batches; unchecked count ignores shops that could not be shown", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  stubFetch(t, { places: manyPlaces(10), gemini: failingBatches(["fake-5"], hangUntilAbort) });
+  const timed = await searchPlaces(request, AbortSignal.timeout(50));
+  assert.equal(timed.uncheckedCount, 5);
+  assert.equal(timed.returnedCount, 5);
+  // 営業中のみ：営業していない店は確認できても表示されないので未確認数に含めない
+  const closedLater = () => jsonResponse({ places: (JSON.parse(JSON.stringify(manyPlacesBody(10)))).places.map((p, i) => i >= 5 && i % 2 ? { ...p, currentOpeningHours: { openNow: false } } : p) });
+  stubFetch(t, { places: closedLater, gemini: failingBatches(["fake-5"], () => jsonResponse({}, 400)) });
+  assert.equal((await searchPlaces({ ...request, openNow: true }, signal)).uncheckedCount, 2); // 5,7,9 は営業していない
+});
+
+test("partial: every batch failing is an error, prioritising timeout and unavailability", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  stubFetch(t, { places: manyPlaces(10), gemini: () => jsonResponse({}, 400) });
+  await assert.rejects(searchPlaces(request, signal), { code: "SEARCH_FAILED" });
+  let n = 0;
+  stubFetch(t, { places: manyPlaces(10), gemini: () => jsonResponse({}, ++n === 1 ? 400 : 429) });
+  await assert.rejects(searchPlaces(request, signal), { code: "SERVICE_UNAVAILABLE" });
+  stubFetch(t, { places: manyPlaces(10), gemini: hangUntilAbort });
+  await assert.rejects(searchPlaces(request, AbortSignal.timeout(30)), { code: "UPSTREAM_TIMEOUT" });
+});
+
+test("partial: user cancellation returns nothing, even if some batches finished", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const controller = new AbortController();
+  stubFetch(t, { places: manyPlaces(10), gemini: failingBatches(["fake-5"], (init) => { setTimeout(() => controller.abort(), 5); return hangUntilAbort(init); }) });
+  await assert.rejects(searchPlaces(request, controller.signal), { name: "AbortError" });
+});
+
+test("batching: empty input makes no Gemini call; all-timeout maps to UPSTREAM_TIMEOUT", async (t) => {
   withEnv(t, { GEMINI_API_KEY: "fake-gemini" });
   const log = [];
   stubFetch(t, { places: manyPlaces(0), gemini: echoGemini(log) });
-  assert.deepEqual(await inferMenusInBatches([], signal), []);
+  assert.deepEqual(await inferMenusInBatches([], signal), { inference: [], unchecked: [] });
   assert.equal(log.length, 0);
-  stubFetch(t, { places: manyPlaces(0), gemini: (init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason))) });
-  const candidates = (await (await import("./nearby-search.ts")).normalizeNearbyResponse(await manyPlaces(7)().json()));
+  stubFetch(t, { places: manyPlaces(0), gemini: hangUntilAbort });
+  const candidates = (await import("./nearby-search.ts")).normalizeNearbyResponse(manyPlacesBody(7));
   await assert.rejects(inferMenusInBatches(candidates, AbortSignal.timeout(20)), { code: "UPSTREAM_TIMEOUT" });
 });

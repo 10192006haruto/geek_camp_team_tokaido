@@ -110,7 +110,7 @@ test("HTTP adapter sends all three conditions and marks completed server results
   context.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     assert.equal(url, "/api/restaurants/search");
     assert.deepEqual(JSON.parse(init.body as string), { location: DEMO_LOCATION, radiusMeters: 1000, mood: "そばが食べたい", openNow: true });
-    return new Response(JSON.stringify({ restaurants: pool, returnedCount: pool.length }));
+    return new Response(JSON.stringify({ restaurants: pool, returnedCount: pool.length, uncheckedCount: 0 }));
   });
   const batch = await acquireCandidates({ ...request, mode: "live", conditions: { ...request.conditions, mood: "そばが食べたい", openNow: true } }, new AbortController().signal);
   assert.equal(batch.scope, "server-results");

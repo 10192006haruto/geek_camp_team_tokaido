@@ -48,10 +48,11 @@ export function isRestaurant(value: unknown): value is Restaurant {
 export function parseSearchResponse(value: unknown): SearchResponse {
   if (!record(value) || !Array.isArray(value.restaurants) || value.restaurants.length > MAX_SEARCH_RESULTS
     || value.returnedCount !== value.restaurants.length || !value.restaurants.every(isRestaurant)
+    || !Number.isSafeInteger(value.uncheckedCount) || (value.uncheckedCount as number) < 0
     || new Set(value.restaurants.map((place) => place.id)).size !== value.restaurants.length) {
     throw new SearchFailure("店舗情報の形式を確認できませんでした。時間をおいてお試しください。");
   }
-  return { restaurants: value.restaurants, returnedCount: value.returnedCount as number };
+  return { restaurants: value.restaurants, returnedCount: value.returnedCount as number, uncheckedCount: value.uncheckedCount as number };
 }
 
 export async function searchRestaurants(request: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {

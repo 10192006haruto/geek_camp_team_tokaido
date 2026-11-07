@@ -32,7 +32,7 @@ test('invalid citations, missing locations, radius, unknown opening and empty re
   assert.equal(selectReviewRestaurants(cs, result, { ...req, location: { latitude: 0, longitude: 0 } }).returnedCount, 0);
   cs[1].location = null;
   assert.equal(selectReviewRestaurants(cs, result, req).returnedCount, 0);
-  assert.deepEqual(selectReviewRestaurants([], [], req), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(selectReviewRestaurants([], [], req), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
 });
 
 test('normalized candidates reach Gemini and frontend without any Nearby call', async (t) => {

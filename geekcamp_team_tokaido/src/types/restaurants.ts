@@ -47,6 +47,11 @@ export type Restaurant = {
 export type SearchResponse = {
   restaurants: Restaurant[];
   returnedCount: number;
+  /**
+   * クチコミがあるのに料理を確認できなかった店舗の数（外部サービスの混雑・期限切れ等）。
+   * 0 なら全候補を確認済み。1以上なら結果は一部の候補だけから選んだもので、画面で「一部未確認」と示す。
+   */
+  uncheckedCount: number;
 };
 export type SearchErrorCode =
   | "INVALID_REQUEST" | "UNSUPPORTED_MEDIA_TYPE" | "METHOD_NOT_ALLOWED"

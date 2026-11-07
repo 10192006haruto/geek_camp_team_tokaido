@@ -24,18 +24,18 @@ test("unknown, zero and false stay distinct", () => {
 });
 
 test("empty results are valid and errors are separate", () => {
-  assert.deepEqual(parseSearchResponse(previewResults(request, "empty")), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(parseSearchResponse(previewResults(request, "empty")), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
   assert.throws(() => previewResults(request, "error"));
 });
 
 test("response validation rejects missing fields, invalid numbers, count mismatch and duplicate IDs", () => {
   const valid = previewResults(request, "success");
   for (const patch of [{ rating: -1 }, { rating: 6 }, { reviewCount: 1.5 }, { distanceMeters: Infinity }, { address: undefined }, { location: { latitude: 91, longitude: 0 } }]) {
-    assert.throws(() => parseSearchResponse({ restaurants: [{ ...valid.restaurants[0], ...patch }], returnedCount: 1 }));
+    assert.throws(() => parseSearchResponse({ restaurants: [{ ...valid.restaurants[0], ...patch }], returnedCount: 1, uncheckedCount: 0 }));
   }
   assert.throws(() => parseSearchResponse({ ...valid, returnedCount: 0 }));
-  assert.throws(() => parseSearchResponse({ restaurants: [valid.restaurants[0], valid.restaurants[0]], returnedCount: 2 }));
-  assert.throws(() => parseSearchResponse({ restaurants: Array(6).fill(valid.restaurants[0]), returnedCount: 6 }));
+  assert.throws(() => parseSearchResponse({ restaurants: [valid.restaurants[0], valid.restaurants[0]], returnedCount: 2, uncheckedCount: 0 }));
+  assert.throws(() => parseSearchResponse({ restaurants: Array(6).fill(valid.restaurants[0]), returnedCount: 6, uncheckedCount: 0 }));
 });
 
 test("unsafe URLs and non-Google directions are never linked", () => {
@@ -67,9 +67,15 @@ test("HTTP client sends contract JSON and propagates its AbortSignal", async (co
     assert.equal(init.method, "POST");
     assert.equal(init.signal, controller.signal);
     assert.deepEqual(JSON.parse(init.body as string), request);
-    return new Response(JSON.stringify({ restaurants: [], returnedCount: 0 }), { status: 200 });
+    return new Response(JSON.stringify({ restaurants: [], returnedCount: 0, uncheckedCount: 0 }), { status: 200 });
   });
-  assert.deepEqual(await searchRestaurants(request, controller.signal), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(await searchRestaurants(request, controller.signal), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
+});
+
+test("uncheckedCount is required and must be a non-negative integer", () => {
+  const valid = previewResults(request, "success");
+  assert.equal(parseSearchResponse({ ...valid, uncheckedCount: 3 }).uncheckedCount, 3);
+  for (const uncheckedCount of [undefined, -1, 1.5, "2", null]) assert.throws(() => parseSearchResponse({ ...valid, uncheckedCount }));
 });
 
 test("HTTP failures and non-JSON success responses do not leak raw server content", async (context) => {
@@ -85,23 +91,23 @@ test("optional photos are validated without changing the legacy response shape",
   const response = previewResults(request, "success");
   const restaurant = response.restaurants[0];
   const valid = { ...restaurant, photos: [{ url: "https://example.com/photo.jpg", label: null, attributions: [] }] };
-  assert.equal(parseSearchResponse({ restaurants: [valid], returnedCount: 1 }).restaurants[0].photos?.length, 1);
+  assert.equal(parseSearchResponse({ restaurants: [valid], returnedCount: 1, uncheckedCount: 0 }).restaurants[0].photos?.length, 1);
   for (const photos of [null, [{ url: 12, label: null, attributions: [] }], [{ url: "https://example.com", label: null, attributions: [{ text: 12, url: null }] }]]) {
-    assert.throws(() => parseSearchResponse({ restaurants: [{ ...restaurant, photos }], returnedCount: 1 }));
+    assert.throws(() => parseSearchResponse({ restaurants: [{ ...restaurant, photos }], returnedCount: 1, uncheckedCount: 0 }));
   }
 });
 
 test("review response supports five unique restaurants and validates menu evidence", () => {
   const place = previewResults(request, "success").restaurants[0];
   const restaurants = Array.from({ length: 5 }, (_, index) => ({ ...place, id: String(index) }));
-  assert.equal(parseSearchResponse({ restaurants, returnedCount: 5 }).restaurants.length, 5);
-  assert.throws(() => parseSearchResponse({ restaurants: [...restaurants, { ...place, id: "6" }], returnedCount: 6 }));
+  assert.equal(parseSearchResponse({ restaurants, returnedCount: 5, uncheckedCount: 0 }).restaurants.length, 5);
+  assert.throws(() => parseSearchResponse({ restaurants: [...restaurants, { ...place, id: "6" }], returnedCount: 6, uncheckedCount: 0 }));
   const evidence = place.inferredMenu[0].evidence[0];
   for (const inferredMenu of [undefined, null, [{ name: "料理", evidence: [] }],
     [{ name: "定食", evidence: [{ ...evidence, quote: "" }] }],
     [{ name: "定食", evidence: [{ ...evidence, author: null }] }],
     [{ name: "定食", evidence: [{ ...evidence, publishTime: "not-a-date" }] }]]) {
-    assert.throws(() => parseSearchResponse({ restaurants: [{ ...place, inferredMenu }], returnedCount: 1 }));
+    assert.throws(() => parseSearchResponse({ restaurants: [{ ...place, inferredMenu }], returnedCount: 1, uncheckedCount: 0 }));
   }
-  assert.equal(parseSearchResponse({ restaurants: [{ ...place, inferredMenu: [] }], returnedCount: 1 }).returnedCount, 1);
+  assert.equal(parseSearchResponse({ restaurants: [{ ...place, inferredMenu: [] }], returnedCount: 1, uncheckedCount: 0 }).returnedCount, 1);
 });

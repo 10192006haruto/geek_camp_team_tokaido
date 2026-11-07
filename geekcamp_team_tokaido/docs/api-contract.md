@@ -37,7 +37,16 @@
 
 気分は除外条件ではありません。麺・和食・カフェ・郷土料理・焼肉の定型判定を使い、未対応の表現（例：がっつり）・否定表現・空欄は距離順です。生成された推薦文を並べ替えの根拠にしません。料理を抽出できない店舗で件数を埋めません。「料理を提供していない」とも判断しません。
 
-`places`では取得・抽出・照合の全体に10秒の期限があります。呼び出しごとに期限を延長せず、自動再試行もしません。
+`places`では取得・抽出・照合の全体に10秒の期限があります。呼び出しごとに期限を延長しません。Geminiが500・503（混雑）を返したバッチだけ、500ms待って期限内で1回再送します。
+
+### 途中結果（一部未確認）
+
+Geminiは5店舗ずつのバッチで呼びます。一部のバッチが失敗・期限切れになっても、成功したバッチの店舗から選んだ結果を200で返し、確認できなかった店舗数を`uncheckedCount`に入れます。
+
+- `uncheckedCount`は、失敗したバッチに含まれ、クチコミ本文があり、半径内で営業条件も満たす（確認できていれば表示され得た）候補の数。全件確認済みなら0。
+- クチコミのある候補を1件も確認できなかった場合は途中結果にせず、期限切れ→504、混雑・設定不足→503、その他→502を返す。
+- 利用者の操作による中断では結果を返さない。
+- 画面は`uncheckedCount > 0`のとき「一部のお店のクチコミを確認できませんでした」と示し、確認できなかった店を「料理がない」とは扱わない。`mock`は常に0。
 
 ## 共有TypeScript型
 
@@ -89,6 +98,7 @@ export type Restaurant = {
 export type SearchResponse = {
   restaurants: Restaurant[];
   returnedCount: number;
+  uncheckedCount: number;
 };
 export type SearchErrorCode =
   | "INVALID_REQUEST" | "UNSUPPORTED_MEDIA_TYPE" | "METHOD_NOT_ALLOWED"
@@ -107,6 +117,7 @@ export type SearchError = {
 | --- | --- |
 | restaurants | 最大5件。該当なしは空配列 |
 | returnedCount | 0〜5の整数、restaurants.lengthと一致 |
+| uncheckedCount | 0以上の整数。料理を確認できなかった候補の数（途中結果）。0なら全件確認済み |
 | id / name | 空でない識別子／店名。必須情報を欠く候補は返さない |
 | location | 店舗座標。不明ならオブジェクト全体をnull |
 | address | 住所、不明はnull |
@@ -167,14 +178,15 @@ export type SearchError = {
       "recommendationReason": "クチコミに生姜焼き定食の言及あり"
     }
   ],
-  "returnedCount": 1
+  "returnedCount": 1,
+  "uncheckedCount": 0
 }
 ```
 
 モックでも検索座標から距離を計算し、半径条件を適用します。0件はHTTP 200で返します。
 
 ```json
-{ "restaurants": [], "returnedCount": 0 }
+{ "restaurants": [], "returnedCount": 0, "uncheckedCount": 0 }
 ```
 
 ## エラー
@@ -194,10 +206,10 @@ export type SearchError = {
 | 405 | METHOD_NOT_ALLOWED | POST以外。Allow: POSTを付与 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | application/json以外 |
 | 502 | SEARCH_FAILED | Places・Geminiの失敗、不正なレスポンス・モデル応答 |
-| 503 | SERVICE_UNAVAILABLE | キー・モデル・取得元の設定不足、権限不足（401/403）、利用上限（429） |
-| 504 | UPSTREAM_TIMEOUT | 検索全体の10秒期限を超過 |
+| 503 | SERVICE_UNAVAILABLE | キー・モデル・取得元の設定不足、権限不足（401/403）、利用上限（429）、Geminiの混雑（再送後も503） |
+| 504 | UPSTREAM_TIMEOUT | 検索全体の10秒期限を超過し、確認できた候補がない |
 | 500 | INTERNAL_ERROR | 想定外の内部障害 |
 
-抽出結果が0件（料理の言及なし）は200の空配列で、上記の失敗とは区別します。`places`の失敗時にモックへ切り替えません。全レスポンスに`Cache-Control: no-store`を付けます。アプリが返すエラーは上記JSON形状に統一する設計です。405もRoute Handlerで明示的に扱います。フレームワークやプロキシから非JSON応答が返る場合にもクライアントは汎用エラーを表示します。内部例外、外部APIの生レスポンス、キー、スタックトレースを利用者に返しません。
+抽出結果が0件（料理の言及なし）は200の空配列で、上記の失敗とは区別します。一部のバッチだけが失敗した場合は上記のエラーにせず、途中結果（`uncheckedCount > 0`）として200で返します。`places`の失敗時にモックへ切り替えません。全レスポンスに`Cache-Control: no-store`を付けます。アプリが返すエラーは上記JSON形状に統一する設計です。405もRoute Handlerで明示的に扱います。フレームワークやプロキシから非JSON応答が返る場合にもクライアントは汎用エラーを表示します。内部例外、外部APIの生レスポンス、キー、スタックトレースを利用者に返しません。
 
 位置情報の拒否・タイムアウト・取得不能はブラウザ側の状態であり、この検索APIのエラーコードとは分けます。失敗時も検索条件を維持して再試行できます。

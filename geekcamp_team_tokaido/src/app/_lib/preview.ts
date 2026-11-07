@@ -28,12 +28,12 @@ export function distanceMeters(a: Location, b: Location): number {
 
 export function previewResults(request: SearchRequest, scenario: PreviewScenario): SearchResponse {
   if (scenario === "error") throw new SearchFailure("検索エラーのデモです。条件を残したまま再試行できます。確認用の状態を「通常」に戻してください。");
-  if (scenario === "empty") return { restaurants: [], returnedCount: 0 };
+  if (scenario === "empty") return { restaurants: [], returnedCount: 0, uncheckedCount: 0 };
   const restaurants = fixtures
     .map(({ restaurant }) => ({ ...restaurant, distanceMeters: distanceMeters(request.location, restaurant.location!) }))
     .filter((place) => place.distanceMeters <= request.radiusMeters)
     .map((place) => scenario === "missing" ? { ...place, rating: null, reviewCount: null, priceLevel: null, address: null, isOpenNow: null, cuisineLabel: null, distanceMeters: null, recommendationReason: null, labels: [] } : place);
-  return { restaurants, returnedCount: restaurants.length };
+  return { restaurants, returnedCount: restaurants.length, uncheckedCount: 0 };
 }
 
 // UI preview only, not an HTTP mock or a claim that the backend is implemented.
