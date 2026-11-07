@@ -9,6 +9,9 @@ export type PlaceReview = {
   publishTime: string | null;
   author: { displayName: string; uri: string | null };
   googleMapsUri: string | null;
+  authorPhotoUrl?: string | null;
+  originalText?: string | null;
+  translated?: boolean;
 };
 export type ReviewCandidate = Omit<Restaurant, "labels" | "recommendationReason" | "inferredMenu"> & {
   reviews: PlaceReview[];
