@@ -45,6 +45,19 @@ const schema = {
   },
 };
 
+/**
+ * Gemini へ送る構造強制用のスキーマ。件数・数値の上限（maxItems 等）を含めると
+ * 「too many states」で 400 になるため取り除く。上限は parseMenuInference で手元検証する。
+ * 構造を強制しない JSON モードだけでは、実データ（5店舗・約4,000文字）で括弧欠落やキー崩れが起きた（2026-11-07 実測）。
+ */
+const BOUND_KEYS = new Set(["minItems", "maxItems", "minimum", "maximum"]);
+function withoutBounds(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutBounds);
+  if (!object(value)) return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !BOUND_KEYS.has(key)).map(([key, v]) => [key, withoutBounds(v)]));
+}
+export const RESPONSE_JSON_SCHEMA = withoutBounds(schema);
+
 /** Strict structure/identity checks; invalid citations are discarded, never repaired by AI. */
 export function parseMenuInference(value: unknown, candidates: ReviewCandidate[]): MenuInference[] {
   if (!object(value) || !exact(value, ["results"]) || !Array.isArray(value.results)
@@ -118,8 +131,8 @@ export async function inferMenus(candidates: ReviewCandidate[], signal: AbortSig
         contents: [{ role: "user", parts: [{ text: JSON.stringify({ places: active.map((c) => ({
           placeId: c.id, reviews: c.reviews.map((r) => ({ index: r.index, text: r.text })),
         })) }) }] }],
-        // JSON mode is verified against the selected model; strict schema validation remains local.
-        generationConfig: { responseMimeType: "application/json" },
+        // 構造は Gemini 側で強制し、件数上限・引用照合などの厳密な検証は手元で行う。
+        generationConfig: { responseMimeType: "application/json", responseJsonSchema: RESPONSE_JSON_SCHEMA },
       }),
     });
     if (!response.ok) throw new MenuInferenceError([401, 403, 404, 429].includes(response.status) ? "SERVICE_UNAVAILABLE" : "SEARCH_FAILED");

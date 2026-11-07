@@ -16,6 +16,9 @@ test('batch request sends only IDs/review text and returns original candidate or
     assert.ok(init.signal instanceof AbortSignal);
     const body = JSON.parse(init.body);
     assert.equal(body.generationConfig.responseMimeType, 'application/json');
+    // 構造は強制するが、400（too many states）の原因になる上限は送らない
+    assert.deepEqual(body.generationConfig.responseJsonSchema.required, ['results']);
+    assert.ok(!/minItems|maxItems|minimum|maximum/.test(JSON.stringify(body.generationConfig.responseJsonSchema)));
     assert.deepEqual(JSON.parse(body.contents[0].parts[0].text), { places: [{ placeId: 'one', reviews: [{ index: 2, text: candidate.reviews[0].text }] }] });
     assert.ok(!init.body.includes('private author') && !init.body.includes('test-key'));
     return response();
