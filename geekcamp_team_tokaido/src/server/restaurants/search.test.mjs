@@ -204,3 +204,57 @@ test("places mode: one shared deadline turns a hanging upstream into 504", async
   const response = await livePost(request, { signal: AbortSignal.timeout(20) });
   assert.equal(response.status, 504);
 });
+
+// ---- Gemini の分割並行呼び出し ----
+const { inferMenusInBatches, INFERENCE_BATCH_SIZE } = await import("./search.ts");
+const manyPlaces = (n) => () => jsonResponse({ places: Array.from({ length: n }, (_, i) => ({
+  id: `fake-${i}`, displayName: { text: `【架空】店${i}` }, location: { latitude: 35.6812 + i * 0.0001, longitude: 139.7671 },
+  currentOpeningHours: { openNow: true },
+  reviews: [{ text: { text: `定食${i}を食べました。`, languageCode: "ja" }, authorAttribution: { displayName: `架空投稿者${i}` } }],
+})) });
+// 送られてきた店舗IDごとに、その店のクチコミから料理を返す
+const echoGemini = (log) => (init) => {
+  const body = JSON.parse(init.body);
+  const places = JSON.parse(body.contents[0].parts[0].text).places;
+  log.push(places.map((p) => p.placeId));
+  return jsonResponse({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ results: places.map((p) => {
+    const dish = p.reviews[0].text.replace("を食べました。", "");
+    return { placeId: p.placeId, items: [{ name: dish, evidence: [{ reviewIndex: 0, quote: p.reviews[0].text }] }] };
+  }) }) }] } }] });
+};
+
+test("places mode: 20 candidates are sent to Gemini in parallel batches and merged", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const log = [];
+  stubFetch(t, { places: manyPlaces(20), gemini: echoGemini(log) });
+  const result = await searchPlaces(request, signal);
+  assert.equal(log.length, 20 / INFERENCE_BATCH_SIZE);
+  assert.ok(log.every((ids) => ids.length <= INFERENCE_BATCH_SIZE));
+  assert.deepEqual(log.flat().sort(), Array.from({ length: 20 }, (_, i) => `fake-${i}`).sort());
+  assert.equal(result.returnedCount, 5);
+  assert.deepEqual(result.restaurants.map((r) => r.inferredMenu[0].name), ["定食0", "定食1", "定食2", "定食3", "定食4"]);
+});
+
+test("places mode: one failing batch fails the whole search and cancels siblings", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  let calls = 0; let cancelled = 0;
+  stubFetch(t, { places: manyPlaces(10), gemini: (init) => {
+    calls += 1;
+    if (calls === 1) return jsonResponse({}, 500);
+    return new Promise((_, reject) => init.signal.addEventListener("abort", () => { cancelled += 1; reject(init.signal.reason); }));
+  } });
+  await assert.rejects(searchPlaces(request, signal), { code: "SEARCH_FAILED" });
+  assert.equal(calls, 2);
+  assert.equal(cancelled, 1);
+});
+
+test("batching: empty input makes no Gemini call; deadline still maps to UPSTREAM_TIMEOUT", async (t) => {
+  withEnv(t, { GEMINI_API_KEY: "fake-gemini" });
+  const log = [];
+  stubFetch(t, { places: manyPlaces(0), gemini: echoGemini(log) });
+  assert.deepEqual(await inferMenusInBatches([], signal), []);
+  assert.equal(log.length, 0);
+  stubFetch(t, { places: manyPlaces(0), gemini: (init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason))) });
+  const candidates = (await (await import("./nearby-search.ts")).normalizeNearbyResponse(await manyPlaces(7)().json()));
+  await assert.rejects(inferMenusInBatches(candidates, AbortSignal.timeout(20)), { code: "UPSTREAM_TIMEOUT" });
+});

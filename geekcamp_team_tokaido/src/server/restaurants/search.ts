@@ -2,10 +2,37 @@ import type { SearchRequest, SearchResponse } from "../../types/restaurants";
 import { fetchMockReviewCandidates, mockMenuInference } from "./mock-data";
 import { PlacesSearchError } from "./errors";
 import { fetchNearbyCandidates } from "./nearby-search";
-import { prepareReviewResults, selectReviewRestaurants } from "./review-results";
+import { selectReviewRestaurants } from "./review-results";
+import { inferMenus, MenuInferenceError } from "../discovery/infer-menus";
+import type { MenuInference, ReviewCandidate } from "../discovery/review-types";
 
 /** 検索全体（Places＋Gemini＋検証）の期限。位置情報の取得は含まない。 */
 export const SEARCH_DEADLINE_MS = 10_000;
+
+/**
+ * Gemini に1回で送る店舗数。20店舗をまとめて送ると10秒を超えたため（2026-11-07 実測）、
+ * 分割して並行に呼ぶ。送るトークンの合計は変わらない。
+ */
+export const INFERENCE_BATCH_SIZE = 5;
+
+/** 店舗を分割して inferMenus を並行に呼ぶ。1つでも失敗したら残りを止め、途中結果は返さない。 */
+export async function inferMenusInBatches(candidates: ReviewCandidate[], signal: AbortSignal): Promise<MenuInference[]> {
+  const batches: ReviewCandidate[][] = [];
+  for (let i = 0; i < candidates.length; i += INFERENCE_BATCH_SIZE) batches.push(candidates.slice(i, i + INFERENCE_BATCH_SIZE));
+  const siblings = new AbortController();
+  const batchSignal = AbortSignal.any([signal, siblings.signal]);
+  try {
+    return (await Promise.all(batches.map((batch) => inferMenus(batch, batchSignal)))).flat();
+  } catch (error) {
+    siblings.abort();
+    // 期限切れ・利用者の中断は、兄弟の中断よりも親 signal の理由を優先して伝える。
+    if (signal.aborted) {
+      if (signal.reason?.name === "TimeoutError") throw new MenuInferenceError("UPSTREAM_TIMEOUT");
+      signal.throwIfAborted();
+    }
+    throw error;
+  }
+}
 
 export type DataSource = "places" | "mock";
 
@@ -25,7 +52,12 @@ export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Pro
   // 取得と抽出で同じ期限を共有する。呼び出しごとに新しい10秒を与えない。
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(SEARCH_DEADLINE_MS)]);
   const candidates = await fetchNearbyCandidates(req, deadline);
-  return prepareReviewResults(candidates, req, deadline);
+  const inference = await inferMenusInBatches(candidates, deadline);
+  if (deadline.aborted) {
+    if (deadline.reason?.name === "TimeoutError") throw new MenuInferenceError("UPSTREAM_TIMEOUT");
+    deadline.throwIfAborted();
+  }
+  return selectReviewRestaurants(candidates, inference, req);
 }
 
 /** モックの経路：架空の候補と固定の抽出結果を、本番と同じ照合・選定に通す。外部通信なし。 */

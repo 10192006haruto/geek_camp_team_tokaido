@@ -12,9 +12,8 @@ UI（範囲・気分・営業中のみ）
  → searchRestaurants（search.ts）：RESTAURANT_DATA_SOURCEで取得元を選択
     places：10秒の期限付きsignalを作成
       → fetchNearbyCandidates（nearby-search.ts）：Nearby Searchで最大20店舗・各最大5クチコミ → ReviewCandidate[]
-      → prepareReviewResults（review-results.ts）
-          → inferMenus（discovery/infer-menus.ts）：Geminiで料理名・引用を抽出
-          → 引用照合・帰属付与 → 半径・営業条件 → 距離順・気分の優先 → 最大5件
+      → inferMenusInBatches（search.ts）：5店舗ずつ inferMenus（discovery/infer-menus.ts）を並行に呼び、Geminiで料理名・引用を抽出
+      → selectReviewRestaurants（review-results.ts）：引用照合・帰属付与 → 半径・営業条件 → 距離順・気分の優先 → 最大5件
     mock：fetchMockReviewCandidates＋固定の抽出結果 → 同じ照合・選定（selectReviewRestaurants）
  → UIは返された結果をそのまま表示
 ```
