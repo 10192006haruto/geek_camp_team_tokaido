@@ -184,3 +184,10 @@ test('opening hours retain provider order and distinguish unknown from closed', 
     assert.equal(normalizeNearbyResponse({ places: [place({ regularOpeningHours: hours })] })[0].openingHours, null);
   }
 });
+
+test('every place carries the Google Maps text attribution required by the Places policies', () => {
+  const list = normalizeNearbyResponse({ places: [place(), place({ id: 'fake-place-2' })] });
+  for (const c of list) assert.deepEqual(c.attributions, [{ text: 'Google Maps', url: null }]);
+  // 店舗ごとに別の配列（共有して書き換えられないこと）
+  assert.notEqual(list[0].attributions, list[1].attributions);
+});

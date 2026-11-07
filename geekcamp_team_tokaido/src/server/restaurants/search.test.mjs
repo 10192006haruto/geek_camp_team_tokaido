@@ -359,3 +359,13 @@ test("photos survive inference deadline and reach the HTTP contract without reso
   assert.ok(body.restaurants.every(r => r.photoAttributions[0].text === '写真投稿者'));
   assert.ok(body.restaurants.every(r => !('photoResource' in r)));
 });
+
+test("places mode: the Google Maps attribution reaches the HTTP response; mock data has none", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  stubFetch(t, { places: fakePlaces, gemini: geminiOk });
+  const body = await (await livePost(request)).json();
+  assert.deepEqual(body.restaurants[0].attributions, [{ text: "Google Maps", url: null }]);
+  const { searchMock } = await import("./search.ts");
+  const mock = await searchMock(request, signal);
+  assert.ok(mock.restaurants.every((r) => r.attributions.length === 0));
+});
