@@ -135,7 +135,7 @@ export type SearchError = {
 | labels | 根拠のあるラベルの配列。現在の経路では地域性ラベルを付けず[] |
 | recommendationReason | 照合済み情報に基づく定型文（例：「クチコミに○○の言及あり」）。根拠不足はnull |
 | googleMapsUrl | 検証したGoogle Mapsリンク、取得できない場合はnull |
-| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。`places`は写真の投稿者・提供されたGoogle Maps写真リンクを返す。`mock`は写真なしで[]。クチコミの投稿者はinferredMenuの各引用のauthorで返す |
+| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。`places`では、attributionsに常に`{ "text": "Google Maps", "url": null }`（Places ポリシーのテキスト帰属。画面はこの文字列と一致したとき所定の書体で表示）、photoAttributionsに写真の投稿者・提供されたGoogle Maps写真リンクを返す。`mock`はどちらも[]。クチコミの投稿者はinferredMenuの各引用のauthorで返す |
 
 不明値を0・空文字に置き換えません。根拠のないラベルや推薦文を生成して件数を埋めません。実APIで要求される帰属は表示まで引き継ぎます。この帰属形式だけで規約を満たすかは未確認で、接続時に拡張が必要となる可能性があります。URLは利用可能なスキーム・送信先を検証し、外部HTMLをそのまま描画しません。
 

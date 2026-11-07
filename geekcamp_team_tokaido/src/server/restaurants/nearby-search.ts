@@ -157,6 +157,9 @@ function toReviews(v: unknown): PlaceReview[] {
  * Nearby Search のレスポンスを ReviewCandidate[] に変換する。
  * 不明な値は null のままにし、0 や空文字で埋めない。ID・店名のない店舗と重複IDは除く。
  */
+/** Google Maps のテキスト帰属（https://developers.google.com/maps/documentation/places/web-service/policies）。 */
+export const GOOGLE_MAPS_ATTRIBUTION = { text: "Google Maps", url: null } as const;
+
 export function normalizeNearbyResponse(payload: unknown): ReviewCandidate[] {
   if (!object(payload)) throw new PlacesSearchError("SEARCH_FAILED");
   // 該当なしのとき places キー自体が返らないことがある。
@@ -186,7 +189,9 @@ export function normalizeNearbyResponse(payload: unknown): ReviewCandidate[] {
       openingHours: normalizeOpeningHours(place.regularOpeningHours),
       cuisineLabel: localizedText(place.primaryTypeDisplayName),
       googleMapsUrl: safeUrl(place.googleMapsUri, true),
-      attributions: [],
+      // Places のポリシーで、Google Maps 由来の情報であることを常に示す必要がある。
+      // 画面（restaurant-card.tsx）はこの文字列と完全一致したときに所定の書体で表示する。
+      attributions: [GOOGLE_MAPS_ATTRIBUTION],
       photoAttributions: [],
       reviews: toReviews(place.reviews),
     }];
