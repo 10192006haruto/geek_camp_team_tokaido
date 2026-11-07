@@ -832,8 +832,11 @@ textarea {
   font-size:13px;
   margin:12px 0
 }
-.error-panel .text-button {
+.error-panel .text-button,.partial-notice .text-button {
   text-decoration:underline
+}
+.partial-notice p {
+  margin:0 0 6px
 }
 .notice {
   background:#f5efd9

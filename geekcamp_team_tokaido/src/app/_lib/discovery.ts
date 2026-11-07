@@ -1,6 +1,6 @@
 import type { Location, PreviewScenario, Restaurant } from "./restaurant-types";
 import { searchRestaurants } from "./search";
-import { searchCandidatePreview } from "./preview";
+import { previewUncheckedCount, searchCandidatePreview } from "./preview";
 
 import { MOOD_LIMIT, MAX_SEARCH_RESULTS, type SearchConditions } from "../../types/restaurants";
 import { orderByMood } from "../../lib/restaurants/mood";
@@ -8,9 +8,10 @@ export { MOOD_LIMIT };
 export type Conditions = SearchConditions;
 export const INITIAL_CONDITIONS: Conditions = { radiusMeters: 1000, mood: "", openNow: false };
 export type Mode = "live" | "demo";
-export type CandidateBatch = { candidates: Restaurant[]; scope: "server-results" | "demo-pool" };
+// uncheckedCount: 料理を確認できなかった候補の数（途中結果）。省略時は0（全件確認済み）。
+export type CandidateBatch = { candidates: Restaurant[]; scope: "server-results" | "demo-pool"; uncheckedCount?: number };
 export type DiscoveryResult = {
-  batch: CandidateBatch; displayed: Restaurant[]; eligibleCount: number;
+  batch: CandidateBatch; displayed: Restaurant[]; eligibleCount: number; uncheckedCount: number;
   applied: Conditions; location: Location; mode: Mode; scenario: PreviewScenario; notice: string | null;
 };
 export type DiscoveryRequest = { conditions: Conditions; location: Location; mode: Mode; scenario: PreviewScenario };
@@ -21,9 +22,10 @@ export const acquireCandidates: Acquire = async (request, signal) => {
   const payload = { location: request.location, ...request.conditions };
   // Explicit UI demo stays local and never calls external APIs.
   if (request.mode === "demo")
-    return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool" };
+    return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool",
+      uncheckedCount: previewUncheckedCount(request.scenario) };
   const response = await searchRestaurants(payload, signal);
-  return { candidates: response.restaurants, scope: "server-results" };
+  return { candidates: response.restaurants, scope: "server-results", uncheckedCount: response.uncheckedCount };
 };
 
 // Conservative, local ordering based only on supplied cuisine, never generated prose.
@@ -65,7 +67,7 @@ export class DiscoverySession {
       ensureCurrent();
       if (request.mode === "demo") this.cached = { key, batch };
       if (batch.scope === "server-results") {
-        return { batch, displayed: batch.candidates, eligibleCount: batch.candidates.length,
+        return { batch, displayed: batch.candidates, eligibleCount: batch.candidates.length, uncheckedCount: batch.uncheckedCount ?? 0,
           applied: { ...request.conditions, mood: request.conditions.mood.trim() },
           location: request.location, mode: request.mode, scenario: request.scenario, notice: null };
       }
@@ -86,7 +88,7 @@ export class DiscoverySession {
         ranked = eligible;
       }
       ensureCurrent();
-      return { batch, displayed: ranked.slice(0, MAX_SEARCH_RESULTS), eligibleCount: eligible.length,
+      return { batch, displayed: ranked.slice(0, MAX_SEARCH_RESULTS), eligibleCount: eligible.length, uncheckedCount: batch.uncheckedCount ?? 0,
         applied: { ...request.conditions, mood: request.conditions.mood.trim().slice(0, MOOD_LIMIT) },
         location: request.location, mode: request.mode, scenario: request.scenario, notice };
     } finally { clearTimeout(timer); }

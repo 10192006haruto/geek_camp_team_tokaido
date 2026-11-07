@@ -110,7 +110,7 @@ test("HTTP adapter sends all three conditions and marks completed server results
   context.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     assert.equal(url, "/api/restaurants/search");
     assert.deepEqual(JSON.parse(init.body as string), { location: DEMO_LOCATION, radiusMeters: 1000, mood: "そばが食べたい", openNow: true });
-    return new Response(JSON.stringify({ restaurants: pool, returnedCount: pool.length }));
+    return new Response(JSON.stringify({ restaurants: pool, returnedCount: pool.length, uncheckedCount: 0 }));
   });
   const batch = await acquireCandidates({ ...request, mode: "live", conditions: { ...request.conditions, mood: "そばが食べたい", openNow: true } }, new AbortController().signal);
   assert.equal(batch.scope, "server-results");
@@ -130,4 +130,29 @@ test("HTTP adapter sends all three conditions and marks completed server results
   assert.equal(result.notice, null);
   await session.run(changed);
   assert.equal(calls, 3);
+});
+
+test("partial server results carry uncheckedCount to the screen state; complete results are 0", async (context) => {
+  const { acquireCandidates } = await import("./discovery.js");
+  context.mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ restaurants: pool.slice(0, 1), returnedCount: 1, uncheckedCount: 4 })));
+  const live = { ...request, mode: "live" as const };
+  const result = await new DiscoverySession(acquireCandidates).run(live);
+  assert.equal(result.uncheckedCount, 4);
+  assert.equal(result.displayed.length, 1);
+  const complete = await new DiscoverySession(async () => ({ candidates: pool, scope: "server-results" })).run(live);
+  assert.equal(complete.uncheckedCount, 0);
+});
+
+test("demo 'partial' scenario drops the nearest candidates and reports them as unchecked", async () => {
+  const { acquireCandidates } = await import("./discovery.js");
+  const { PARTIAL_PREVIEW_UNCHECKED } = await import("./preview.js");
+  const signal = new AbortController().signal;
+  const full = await acquireCandidates({ ...request, scenario: "success" }, signal);
+  const partial = await acquireCandidates({ ...request, scenario: "partial" }, signal);
+  assert.equal(partial.uncheckedCount, PARTIAL_PREVIEW_UNCHECKED);
+  assert.equal(full.uncheckedCount, 0);
+  assert.deepEqual(partial.candidates.map((r) => r.id), full.candidates.slice(PARTIAL_PREVIEW_UNCHECKED).map((r) => r.id));
+  const result = await new DiscoverySession().run({ ...request, scenario: "partial" });
+  assert.equal(result.uncheckedCount, PARTIAL_PREVIEW_UNCHECKED);
 });

@@ -6,7 +6,8 @@ import type { MenuInference, ReviewCandidate } from "../discovery/review-types";
 import { distanceMeters } from "./distance";
 
 /** Recheck citations and attach authors from Places, never from model-generated metadata. */
-export function selectReviewRestaurants(candidates: ReviewCandidate[], inference: MenuInference[], req: SearchRequest): SearchResponse {
+/** uncheckedCount：料理を確認できなかったクチコミ付き候補の数（呼び出し元が数える。全件確認済みなら0）。 */
+export function selectReviewRestaurants(candidates: ReviewCandidate[], inference: MenuInference[], req: SearchRequest, uncheckedCount = 0): SearchResponse {
   const byId = new Map(inference.map((result) => [result.placeId, result.items]));
   const eligible: Restaurant[] = candidates.flatMap((candidate) => {
     const distance = candidate.location ? distanceMeters(req.location, candidate.location) : null;
@@ -31,7 +32,7 @@ export function selectReviewRestaurants(candidates: ReviewCandidate[], inference
   }).sort((a, b) => a.distanceMeters! - b.distanceMeters! || a.id.localeCompare(b.id));
   const restaurants = orderByMood(eligible, req.mood,
     (r) => `${r.inferredMenu.map((item) => item.name).join(" ")} ${r.cuisineLabel ?? ""}`).slice(0, MAX_SEARCH_RESULTS);
-  return { restaurants, returnedCount: restaurants.length };
+  return { restaurants, returnedCount: restaurants.length, uncheckedCount };
 }
 
 /** Yuuto passes normalized candidates and the remaining whole-search deadline. */
