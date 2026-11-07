@@ -21,8 +21,9 @@ registerHooks({
     return next(url, context);
   },
 });
-const { selectRestaurants, searchRestaurants } = await import("./search.ts");
-const { fetchMockCandidates } = await import("./mock-data.ts");
+const { searchRestaurants } = await import("./search.ts");
+const { fetchMockReviewCandidates, mockMenuInference } = await import("./mock-data.ts");
+const { selectReviewRestaurants } = await import("./review-results.ts");
 const { parseSearchRequest } = await import("./validate.ts");
 const { POST, GET, OPTIONS } = await import("../../app/api/restaurants/search/route.ts");
 const request = { location: { latitude: 35.6812, longitude: 139.7671 }, radiusMeters: 1000, mood: "", openNow: false };
@@ -40,15 +41,37 @@ test("all three conditions are required; validate boundaries and reject removed 
   assert.equal(parseSearchRequest({ ...request, location: { latitude: -90, longitude: 180 } }).ok, true);
 });
 
-test("regional evidence and opening status precede the five-result limit", async () => {
-  const result = await searchRestaurants({ ...request, openNow: true }, signal);
-  assert.equal(result.returnedCount, 5);
-  assert.deepEqual(result.restaurants.map((r) => r.id), [3, 4, 5, 6, 7].map((n) => `mock-place-${n}`));
-  assert.ok(result.restaurants.every((r) => r.isOpenNow === true && r.labels.includes("ご当地料理") && r.recommendationReason));
-  const candidates = await fetchMockCandidates(request, signal);
-  const unverified = candidates[8];
-  assert.equal((await selectRestaurants([unverified], request, signal)).returnedCount, 0);
-  assert.equal((await selectRestaurants([{ ...candidates[0], localDishes: candidates[0].localDishes.map((e) => ({ ...e, region: "大阪" })) }], request, signal)).returnedCount, 0);
+const ids = (result) => result.restaurants.map((r) => r.id.replace("mock-place-", "")).map(Number);
+
+test("mock: only shops with verified dishes, opening filter before the five-result limit", async () => {
+  const ordinary = await searchRestaurants(request, signal);
+  assert.deepEqual(ids(ordinary), [1, 2, 3, 5, 6]); // 4 has no dish mention
+  const open = await searchRestaurants({ ...request, openNow: true }, signal);
+  assert.deepEqual(ids(open), [3, 5, 6, 7, 8]); // 1 (false) and 2 (null) excluded, later shops fill in
+  assert.ok(open.restaurants.every((r) => r.isOpenNow === true && r.inferredMenu.length > 0 && r.recommendationReason));
+  assert.deepEqual(ids(await searchRestaurants({ ...request, radiusMeters: 3000, mood: "麺", openNow: true }, signal)), [8, 9, 3, 5, 6]);
+});
+
+test("mock: citations, attribution, null / 0 and translated reviews survive to the response", async () => {
+  const { restaurants } = await searchRestaurants(request, signal);
+  const byId = Object.fromEntries(restaurants.map((r) => [r.id, r]));
+  assert.equal(byId["mock-place-3"].reviewCount, 0);
+  assert.equal(byId["mock-place-3"].rating, null);
+  assert.equal(byId["mock-place-3"].cuisineLabel, null);
+  assert.equal(byId["mock-place-2"].isOpenNow, null);
+  // review index 1 has no text; index 2 keeps its number
+  assert.equal(byId["mock-place-5"].inferredMenu[0].evidence[0].author.text, "架空投稿者5-3");
+  const curry = byId["mock-place-6"].inferredMenu[0].evidence[0];
+  assert.equal(curry.translated, true);
+  assert.ok(curry.originalText.startsWith("I had"));
+  assert.ok(restaurants.every((r) => r.name.startsWith("【架空】") && !("reviews" in r)));
+});
+
+test("mock: fabricated citations are dropped by the same verification as production", async () => {
+  const candidates = await fetchMockReviewCandidates(request, signal);
+  const inference = mockMenuInference(candidates);
+  inference[0].items[0].evidence[0].quote = "天ぷらそばは最高だと聞きました。";
+  assert.ok(!ids(selectReviewRestaurants(candidates, inference, request)).includes(1));
 });
 
 test("mood promotes a distant candidate before slicing; unknown/negative intent never removes candidates", async () => {
@@ -57,16 +80,13 @@ test("mood promotes a distant candidate before slicing; unknown/negative intent 
   assert.equal(result.returnedCount, 5);
   const ordinary = await searchRestaurants(request, signal);
   for (const mood of ["がっつり", "そば以外"]) assert.deepEqual(await searchRestaurants({ ...request, mood }, signal), ordinary);
-  assert.equal(ordinary.restaurants[0].reviewCount, 0);
-  assert.equal(ordinary.restaurants[0].rating, null);
-  assert.equal(ordinary.restaurants[1].isOpenNow, null);
 });
 
 test("empty, out-of-radius, missing coordinates, cancellation and concurrent conditions", async () => {
-  assert.deepEqual(await selectRestaurants([], request, signal), { restaurants: [], returnedCount: 0 });
+  assert.deepEqual(selectReviewRestaurants([], [], request), { restaurants: [], returnedCount: 0 });
   assert.equal((await searchRestaurants({ ...request, location: { latitude: 0, longitude: 0 } }, signal)).returnedCount, 0);
-  const candidates = await fetchMockCandidates(request, signal);
-  assert.equal((await selectRestaurants([{ ...candidates[0], location: null }], request, signal)).returnedCount, 0);
+  const candidates = await fetchMockReviewCandidates(request, signal);
+  assert.equal(selectReviewRestaurants([{ ...candidates[0], location: null }], mockMenuInference(candidates), request).returnedCount, 0);
   const controller = new AbortController(); controller.abort();
   await assert.rejects(searchRestaurants(request, controller.signal), { name: "AbortError" });
   const [open, all] = await Promise.all([searchRestaurants({ ...request, openNow: true }, signal), searchRestaurants(request, signal)]);

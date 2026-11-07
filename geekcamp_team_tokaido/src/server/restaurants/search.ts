@@ -1,11 +1,8 @@
 import type { SearchRequest, SearchResponse } from "../../types/restaurants";
-import { fetchMockCandidates } from "./mock-data";
-import { distanceMeters } from "./distance";
-import { cleanseCandidates, classifyCandidates } from "../discovery";
-import { orderByMood } from "../../lib/restaurants/mood";
+import { fetchMockReviewCandidates, mockMenuInference } from "./mock-data";
 import { PlacesSearchError } from "./errors";
 import { fetchNearbyCandidates } from "./nearby-search";
-import { prepareReviewResults } from "./review-results";
+import { prepareReviewResults, selectReviewRestaurants } from "./review-results";
 
 /** 検索全体（Places＋Gemini＋検証）の期限。位置情報の取得は含まない。 */
 export const SEARCH_DEADLINE_MS = 10_000;
@@ -23,27 +20,6 @@ export function resolveDataSource(env: Record<string, string | undefined> = proc
   throw new PlacesSearchError("SERVICE_UNAVAILABLE");
 }
 
-/** Final limit belongs here, after regional evidence, opening status and mood. */
-export async function selectRestaurants(input: unknown, req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
-  signal.throwIfAborted();
-  const candidates = cleanseCandidates(input)
-    .map((c) => ({ ...c, distanceMeters: c.location ? distanceMeters(req.location, c.location) : null }))
-    .filter((c) => c.distanceMeters !== null && c.distanceMeters <= req.radiusMeters);
-  const decisions = new Map((await classifyCandidates(candidates, { searchLocation: req.location })).map((d) => [d.id, d]));
-  signal.throwIfAborted();
-  const eligible = candidates.flatMap((candidate) => {
-    const decision = decisions.get(candidate.id);
-    if (!decision?.selected || (req.openNow && candidate.isOpenNow !== true)) return [];
-    const { localDishes, menuItems, isChain, ...restaurant } = candidate;
-    void localDishes; void menuItems; void isChain;
-    return [{ restaurant: { ...restaurant, inferredMenu: [], labels: decision.labels, recommendationReason: decision.recommendationReason },
-      dishes: decision.evidence.map((e) => e.dish).join(" ") }];
-  }).sort((a, b) => a.restaurant.distanceMeters! - b.restaurant.distanceMeters!);
-  const restaurants = orderByMood(eligible, req.mood, (item) => `${item.dishes} ${item.restaurant.cuisineLabel ?? ""}`)
-    .slice(0, 5).map(({ restaurant }) => restaurant);
-  return { restaurants, returnedCount: restaurants.length };
-}
-
 /** 実APIの経路：Nearby Search → Gemini による料理抽出 → 引用照合・条件適用 → 最大5件。 */
 export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
   // 取得と抽出で同じ期限を共有する。呼び出しごとに新しい10秒を与えない。
@@ -52,7 +28,13 @@ export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Pro
   return prepareReviewResults(candidates, req, deadline);
 }
 
+/** モックの経路：架空の候補と固定の抽出結果を、本番と同じ照合・選定に通す。外部通信なし。 */
+export async function searchMock(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
+  const candidates = await fetchMockReviewCandidates(req, signal);
+  signal.throwIfAborted();
+  return selectReviewRestaurants(candidates, mockMenuInference(candidates), req);
+}
+
 export async function searchRestaurants(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
-  if (resolveDataSource() === "places") return searchPlaces(req, signal);
-  return selectRestaurants(await fetchMockCandidates(req, signal), req, signal);
+  return resolveDataSource() === "places" ? searchPlaces(req, signal) : searchMock(req, signal);
 }
