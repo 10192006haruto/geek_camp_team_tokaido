@@ -300,3 +300,28 @@ test("batching: empty input makes no Gemini call; all-timeout maps to UPSTREAM_T
   const candidates = (await import("./nearby-search.ts")).normalizeNearbyResponse(manyPlacesBody(7));
   await assert.rejects(inferMenusInBatches(candidates, AbortSignal.timeout(20)), { code: "UPSTREAM_TIMEOUT" });
 });
+
+// ---- 全国チェーンの除外 ----
+test("places mode: national chains are removed before Gemini and are not counted as unchecked", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const body = manyPlacesBody(4);
+  body.places[0].displayName = { text: "ケンタッキーフライドチキン グランスタ東京店" };
+  body.places[2].displayName = { text: "スターバックス コーヒー 丸の内店" };
+  const log = [];
+  stubFetch(t, { places: () => jsonResponse(body), gemini: echoGemini(log) });
+  const result = await searchPlaces(request, signal);
+  assert.deepEqual(log.flat().sort(), ["fake-1", "fake-3"]);
+  assert.deepEqual(result.restaurants.map((r) => r.id), ["fake-1", "fake-3"]);
+  assert.equal(result.uncheckedCount, 0);
+});
+
+test("places mode: all candidates being chains makes no Gemini call and returns an empty 200", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const body = manyPlacesBody(2);
+  body.places[0].displayName = { text: "マクドナルド 東京駅店" };
+  body.places[1].displayName = { text: "吉野家 八重洲店" };
+  const log = [];
+  stubFetch(t, { places: () => jsonResponse(body), gemini: echoGemini(log) });
+  assert.deepEqual(await searchPlaces(request, signal), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
+  assert.equal(log.length, 0);
+});

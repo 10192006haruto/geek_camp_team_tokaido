@@ -29,6 +29,7 @@
 ### 検索順序
 
 1. 候補を取得・正規化。`places`ではNearby Searchで半径内を距離順に最大20店舗、各最大5件のクチコミを取得。`mock`では架空店舗。
+   - 全国展開している飲食チェーンは、店名リスト（`src/server/restaurants/national-chains.ts`）で除外する。Geminiには送らず、`uncheckedCount`にも数えない。地域チェーンは除外しない。
 2. クチコミから料理名と根拠の引用を抽出（`places`はGeminiに5店舗ずつ並行して送り抽出、`mock`は固定値）。
 3. 引用が該当クチコミ本文の部分文字列で、料理名を含むかを照合。満たさない根拠・料理は捨て、料理が残らない店舗は返さない。
 4. 店舗座標不明・半径外を除外。openNow=trueならisOpenNow=trueだけを残す。null・falseは除外。
