@@ -95,7 +95,19 @@ export function parseMenuInference(value: unknown, candidates: ReviewCandidate[]
   return candidates.map((c) => parsed.get(c.id)!);
 }
 
-/** One batch per search. Parent signal must include Yuuto's total search deadline. No retries. */
+/** 再送の対象。実API（2026-11-07）で「high demand」の 503 が4バッチ中0〜2件起きた。 */
+const RETRYABLE_STATUS = new Set([500, 503]);
+export const RETRY_DELAY_MS = 500;
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); reject(signal.reason); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** One batch per call. Parent signal must include Yuuto's total search deadline. Retries once on 500/503 within it. */
 export async function inferMenus(candidates: ReviewCandidate[], signal: AbortSignal): Promise<MenuInference[]> {
   if (signal.aborted) {
     if (signal.reason?.name === "TimeoutError") throw new MenuInferenceError("UPSTREAM_TIMEOUT");
@@ -122,20 +134,28 @@ export async function inferMenus(candidates: ReviewCandidate[], signal: AbortSig
   const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_REVIEW_MODEL;
   if (!key || !/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(model)) throw new MenuInferenceError("SERVICE_UNAVAILABLE");
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: `${REVIEW_INSTRUCTION}\n返答は次のJSON Schemaに従ってください：${JSON.stringify(schema)}` }] },
+    contents: [{ role: "user", parts: [{ text: JSON.stringify({ places: active.map((c) => ({
+      placeId: c.id, reviews: c.reviews.map((r) => ({ index: r.index, text: r.text })),
+    })) }) }] }],
+    // 構造は Gemini 側で強制し、件数上限・引用照合などの厳密な検証は手元で行う。
+    generationConfig: { responseMimeType: "application/json", responseJsonSchema: RESPONSE_JSON_SCHEMA },
+  });
+  const request = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    cache: "no-store", redirect: "error", signal: deadline, body,
+  });
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      cache: "no-store", redirect: "error", signal: deadline,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: `${REVIEW_INSTRUCTION}\n返答は次のJSON Schemaに従ってください：${JSON.stringify(schema)}` }] },
-        contents: [{ role: "user", parts: [{ text: JSON.stringify({ places: active.map((c) => ({
-          placeId: c.id, reviews: c.reviews.map((r) => ({ index: r.index, text: r.text })),
-        })) }) }] }],
-        // 構造は Gemini 側で強制し、件数上限・引用照合などの厳密な検証は手元で行う。
-        generationConfig: { responseMimeType: "application/json", responseJsonSchema: RESPONSE_JSON_SCHEMA },
-      }),
-    });
-    if (!response.ok) throw new MenuInferenceError([401, 403, 404, 429].includes(response.status) ? "SERVICE_UNAVAILABLE" : "SEARCH_FAILED");
+    let response = await request();
+    // 混雑（503）・一時的な内部エラー（500）は、親の期限内で1回だけ再送する。期限は延長しない。
+    if (RETRYABLE_STATUS.has(response.status)) {
+      await abortableDelay(RETRY_DELAY_MS, deadline);
+      response = await request();
+    }
+    if (!response.ok) {
+      throw new MenuInferenceError([401, 403, 404, 429, 503].includes(response.status) ? "SERVICE_UNAVAILABLE" : "SEARCH_FAILED");
+    }
     const payload: unknown = await response.json();
     deadline.throwIfAborted();
     if (!object(payload) || !Array.isArray(payload.candidates) || payload.candidates.length !== 1) return invalid();

@@ -240,7 +240,7 @@ test("places mode: one failing batch fails the whole search and cancels siblings
   let calls = 0; let cancelled = 0;
   stubFetch(t, { places: manyPlaces(10), gemini: (init) => {
     calls += 1;
-    if (calls === 1) return jsonResponse({}, 500);
+    if (calls === 1) return jsonResponse({}, 400); // 400 は再試行されない
     return new Promise((_, reject) => init.signal.addEventListener("abort", () => { cancelled += 1; reject(init.signal.reason); }));
   } });
   await assert.rejects(searchPlaces(request, signal), { code: "SEARCH_FAILED" });

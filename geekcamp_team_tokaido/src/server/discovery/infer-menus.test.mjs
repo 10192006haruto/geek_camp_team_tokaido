@@ -63,7 +63,7 @@ test('invented quotes, blank quotes and dish names not in quotation are discarde
 
 test('HTTP failures become bounded error codes without raw provider data', async (t) => {
   setup(t);
-  for (const [status, code] of [[400, 'SEARCH_FAILED'], [401, 'SERVICE_UNAVAILABLE'], [403, 'SERVICE_UNAVAILABLE'], [404, 'SERVICE_UNAVAILABLE'], [429, 'SERVICE_UNAVAILABLE'], [500, 'SEARCH_FAILED']]) {
+  for (const [status, code] of [[400, 'SEARCH_FAILED'], [401, 'SERVICE_UNAVAILABLE'], [403, 'SERVICE_UNAVAILABLE'], [404, 'SERVICE_UNAVAILABLE'], [429, 'SERVICE_UNAVAILABLE'], [500, 'SEARCH_FAILED'], [503, 'SERVICE_UNAVAILABLE']]) {
     const mock = t.mock.method(globalThis, 'fetch', async () => new Response('sensitive provider payload', { status }));
     await assert.rejects(inferMenus([candidate], signal()), (e) => e.code === code && !e.message.includes('sensitive'));
     mock.mock.restore();
@@ -97,4 +97,37 @@ test('concurrent searches cannot exchange review IDs or output', async (t) => {
   });
   const [a, b] = await Promise.all([inferMenus([candidate], signal()), inferMenus([{ ...candidate, id: 'two' }], signal())]);
   assert.deepEqual(a, [{ placeId: 'one', items: [] }]); assert.deepEqual(b, [{ placeId: 'two', items: [] }]);
+});
+
+test('500/503 are retried once within the same deadline; other failures are not', async (t) => {
+  setup(t);
+  for (const status of [500, 503]) {
+    let calls = 0;
+    const mock = t.mock.method(globalThis, 'fetch', async () => (++calls === 1 ? new Response('busy', { status }) : response()));
+    assert.deepEqual(await inferMenus([candidate], signal()), output.results);
+    assert.equal(calls, 2);
+    mock.mock.restore();
+  }
+  for (const status of [400, 429]) {
+    let calls = 0;
+    const mock = t.mock.method(globalThis, 'fetch', async () => { calls++; return new Response('x', { status }); });
+    await assert.rejects(inferMenus([candidate], signal()));
+    assert.equal(calls, 1);
+    mock.mock.restore();
+  }
+  let calls = 0;
+  const twice = t.mock.method(globalThis, 'fetch', async () => { calls++; return new Response('busy', { status: 503 }); });
+  await assert.rejects(inferMenus([candidate], signal()), (e) => e.code === 'SERVICE_UNAVAILABLE');
+  assert.equal(calls, 2);
+  twice.mock.restore();
+});
+
+test('the retry wait never outlives the deadline', async (t) => {
+  setup(t);
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; return new Response('busy', { status: 503 }); });
+  const started = Date.now();
+  await assert.rejects(inferMenus([candidate], AbortSignal.timeout(50)), (e) => e.code === 'UPSTREAM_TIMEOUT');
+  assert.ok(Date.now() - started < 400);
+  assert.equal(calls, 1);
 });
