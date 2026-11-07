@@ -1,3 +1,4 @@
+import { MAX_SEARCH_RESULTS } from "../../types/restaurants";
 import type { Attribution, Restaurant, SearchRequest, SearchResponse } from "./restaurant-types";
 
 export class SearchFailure extends Error {}
@@ -8,6 +9,18 @@ const nullableNumber = (value: unknown, max = Infinity, integer = false) =>
   value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max && (!integer || Number.isSafeInteger(value)));
 const attribution = (value: unknown): value is Attribution =>
   record(value) && typeof value.text === "string" && nullableText(value.url);
+
+const nonempty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+function inferredMenu(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 10 && value.every((item) =>
+    record(item) && nonempty(item.name) && Array.isArray(item.evidence) && item.evidence.length > 0 && item.evidence.length <= 5
+    && item.evidence.every((e: unknown) => record(e) && nonempty(e.quote) && e.quote.includes(item.name as string)
+      && record(e.author) && nonempty(e.author.text) && nullableText(e.author.url)
+      && nullableText(e.reviewUrl) && (e.publishTime === null || (typeof e.publishTime === "string" && Number.isFinite(Date.parse(e.publishTime))))
+      && (e.authorPhotoUrl === undefined || nullableText(e.authorPhotoUrl))
+      && (e.originalText === undefined || nullableText(e.originalText))
+      && (e.translated === undefined || typeof e.translated === "boolean")));
+}
 
 export function isRestaurant(value: unknown): value is Restaurant {
   if (!record(value)) return false;
@@ -26,13 +39,14 @@ export function isRestaurant(value: unknown): value is Restaurant {
     && nullableText(value.recommendationReason) && nullableText(value.googleMapsUrl)
     && (value.isOpenNow === null || typeof value.isOpenNow === "boolean")
     && (value.priceLevel === null || ["free", "inexpensive", "moderate", "expensive", "very_expensive"].includes(value.priceLevel as string))
+    && inferredMenu(value.inferredMenu)
     && Array.isArray(value.labels) && value.labels.every((label) => typeof label === "string")
     && Array.isArray(value.attributions) && value.attributions.every(attribution)
     && Array.isArray(value.photoAttributions) && value.photoAttributions.every(attribution);
 }
 
 export function parseSearchResponse(value: unknown): SearchResponse {
-  if (!record(value) || !Array.isArray(value.restaurants) || value.restaurants.length > 5
+  if (!record(value) || !Array.isArray(value.restaurants) || value.restaurants.length > MAX_SEARCH_RESULTS
     || value.returnedCount !== value.restaurants.length || !value.restaurants.every(isRestaurant)
     || new Set(value.restaurants.map((place) => place.id)).size !== value.restaurants.length) {
     throw new SearchFailure("店舗情報の形式を確認できませんでした。時間をおいてお試しください。");
@@ -49,7 +63,9 @@ export async function searchRestaurants(request: SearchRequest, signal: AbortSig
     // Never render raw upstream messages, HTML or credentials.
     throw new SearchFailure(response.status === 404
       ? "検索APIはまだ接続されていません。「デモで試す」から画面を確認できます。"
-      : response.status === 400 ? "検索条件を確認して、もう一度お試しください。"
+      : response.status === 504 ? "料理の確認に時間がかかっています。条件を保ったまま再試行できます。"
+        : response.status === 503 ? "検索サービスを現在利用できません。時間をおいて再試行してください。"
+        : response.status === 400 ? "検索条件を確認して、もう一度お試しください。"
         : "店舗を取得できませんでした。時間をおいて再度お試しください。");
   }
   try { return parseSearchResponse(await response.json()); }

@@ -33,7 +33,7 @@ export type RegionalDish = {
 };
 
 /** 判定前の店舗情報。確認済みメニューがある場合は、その内容を優先する。 */
-export type CandidateRestaurant = Omit<Restaurant, "labels" | "recommendationReason"> & {
+export type CandidateRestaurant = Omit<Restaurant, "labels" | "recommendationReason" | "inferredMenu"> & {
   localDishes: DishEvidence[];
   menuItems?: MenuItem[];
   isChain: boolean | null;

@@ -1204,3 +1204,15 @@ textarea {
     opacity:1
   }
 }
+
+/* Review-derived dishes: wrap long quotes without horizontal scrolling. */
+.review-dishes { margin-block: 1.5rem; }
+.dish-list { list-style: none; padding: 0; display: grid; gap: 1rem; }
+.dish-list > li { padding: 1rem; border: 1px solid #ddcdbb; border-radius: 1rem; }
+.review-evidence { margin: 1rem 0 0; overflow-wrap: anywhere; }
+.review-evidence blockquote { margin: 0; padding-inline-start: 1rem; border-inline-start: 3px solid #b65e32; }
+.review-evidence figcaption { display: grid; gap: .5rem; margin-top: .75rem; font-size: .85rem; }
+.review-evidence .credits { margin: 0; }
+.review-avatar { border-radius: 50%; object-fit: cover; }
+.review-evidence a { text-decoration: underline; }
+.review-evidence summary { cursor: pointer; }

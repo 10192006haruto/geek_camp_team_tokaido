@@ -57,7 +57,9 @@ export function RestaurantCard({ restaurant, onSelect, index }: { restaurant: Re
       <div className="candidate-glass"><RestaurantMeta restaurant={restaurant} />
         <h3 id={`name-${restaurant.id}`}>{restaurant.name}</h3>
         {restaurant.cuisineLabel && <p className="cuisine">{restaurant.cuisineLabel}</p>}
-        <p className="reason">{restaurant.recommendationReason ?? "おすすめ理由はまだ提供されていません。"}</p>
+        <p className="reason">{restaurant.inferredMenu.length
+          ? `クチコミの料理：${restaurant.inferredMenu.map((item) => item.name).join("・")}`
+          : "クチコミからの料理情報は未取得です。"}</p>
         <span className="candidate-action">お店を詳しく見る <span aria-hidden="true">↗</span></span>
       </div>
       <button id={`card-${restaurant.id}`} className="whole-card" onClick={onSelect} aria-label={`${restaurant.name}の詳細を見る`} />
@@ -65,6 +67,30 @@ export function RestaurantCard({ restaurant, onSelect, index }: { restaurant: Re
     <Credits items={photosFor(restaurant)[0]?.attributions ?? restaurant.photoAttributions} />
     <Credits items={restaurant.attributions} />
   </article>;
+}
+
+export function ReviewDishes({ restaurant }: { restaurant: Restaurant }) {
+  return <section className="review-dishes" aria-labelledby="review-dishes-title">
+    <h2 id="review-dishes-title">クチコミで言及された料理</h2>
+    <p className="muted">過去のクチコミから抽出した情報です。現在の提供を保証するものではありません。</p>
+    {restaurant.inferredMenu.length === 0 ? <p>クチコミからの料理情報は未取得です。</p>
+      : <ul className="dish-list">{restaurant.inferredMenu.map((item, index) => <li key={`${item.name}-${index}`}>
+        <h3>{item.name}</h3>
+        {item.evidence.map((evidence, i) => <figure className="review-evidence" key={i}>
+          <blockquote><p>{evidence.quote}</p></blockquote>
+          <figcaption>
+            {safeExternalUrl(evidence.authorPhotoUrl ?? null) &&
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="review-avatar" src={safeExternalUrl(evidence.authorPhotoUrl ?? null)} alt="" width={32} height={32} loading="lazy" referrerPolicy="no-referrer" />}
+            <Credits items={[evidence.author]} />
+            {evidence.publishTime && <time dateTime={evidence.publishTime}>{new Date(evidence.publishTime).toISOString().slice(0, 10)} 投稿</time>}
+            {safeExternalUrl(evidence.reviewUrl, true) && <a href={safeExternalUrl(evidence.reviewUrl, true)} target="_blank" rel="noopener noreferrer">元のクチコミを見る<span className="sr-only">（Google Maps・新しいタブ）</span></a>}
+            {evidence.translated && <p className="muted">翻訳されたクチコミです。</p>}
+            {evidence.originalText && <details><summary>原文を見る</summary><p>{evidence.originalText}</p></details>}
+          </figcaption>
+        </figure>)}
+      </li>)}</ul>}
+  </section>;
 }
 
 export function directionsUrl(restaurant: Restaurant, demo: boolean) {
@@ -86,11 +112,8 @@ export function RestaurantDetail({ restaurant: r, demo, onBack, onHome }: { rest
       <h1 id="detail-title" tabIndex={-1}>{r.name}</h1>
       {r.cuisineLabel && <p className="detail-cuisine">{r.cuisineLabel}</p>}
       <RestaurantMeta restaurant={r} />
-      <section className="detail-reason"><h2>このお店について</h2><p>{r.recommendationReason ?? "おすすめ理由は未取得です。"}</p>
-        {!!r.labels.length && <ul className="labels">{r.labels.map((label) => <li key={label}>{label}</li>)}</ul>}
-        <p className="muted">{demo ? "紹介文・営業状況・評価は、すべて架空の設定です。" : r.attributions.length ? "以下は取得情報の出典です。地域性や料理の詳細はリンク先でもご確認ください。" : "根拠となる出典は未提供です。地域性や料理の事実は確認できていません。"}</p>
-        <Credits items={r.attributions} />
-      </section>
+      <ReviewDishes restaurant={r} />
+      <Credits items={r.attributions} />
       <dl className="detail-info">
         <div><dt>住所</dt><dd>{r.address ?? "情報なし"}</dd></div>
         <div><dt>営業情報</dt><dd>{r.isOpenNow === null ? "営業状況不明" : r.isOpenNow ? "取得時点では営業中" : "取得時点では営業時間外"}<small>営業時間の詳細は未取得です。</small></dd></div>

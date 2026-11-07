@@ -43,3 +43,20 @@ test("null and zero are different in detail output; demo route button is disable
   assert.match(markup, /disabled=""/);
   assert.doesNotMatch(markup, /href="https:\/\/www.google.com\/maps/);
 });
+
+test("review dishes render quote and attribution safely without current-offering claims", () => {
+  const quote = 'そばを食べました。<script>alert(1)</script>';
+  const place = { ...restaurant, inferredMenu: [{ name: "そば", evidence: [{ quote,
+    author: { text: "投稿者", url: "https://www.google.com/maps/contrib/123" },
+    reviewUrl: "https://www.google.com/maps/reviews/test", publishTime: "2026-11-07T00:00:00Z",
+    translated: true, originalText: "I ate soba." }] }] };
+  const markup = renderToStaticMarkup(<RestaurantDetail restaurant={place} demo={false} onBack={() => {}} onHome={() => {}} />);
+  assert.match(markup, /クチコミで言及された料理/);
+  assert.match(markup, /投稿者/); assert.match(markup, /2026-11-07/);
+  assert.match(markup, /元のクチコミを見る/); assert.match(markup, /翻訳された/);
+  assert.doesNotMatch(markup, /<script>|ご当地料理と判定済み/);
+  const bad = { ...place, inferredMenu: [{ name: "そば", evidence: [{ ...place.inferredMenu[0].evidence[0],
+    author: { text: "投稿者", url: "javascript:alert(1)" }, reviewUrl: "https://evil.example/review" }] }] };
+  const safe = renderToStaticMarkup(<RestaurantDetail restaurant={bad} demo onBack={() => {}} onHome={() => {}} />);
+  assert.doesNotMatch(safe, /href="javascript:|href="https:\/\/evil/);
+});

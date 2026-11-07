@@ -90,3 +90,18 @@ test("optional photos are validated without changing the legacy response shape",
     assert.throws(() => parseSearchResponse({ restaurants: [{ ...restaurant, photos }], returnedCount: 1 }));
   }
 });
+
+test("review response supports twenty unique restaurants and validates menu evidence", () => {
+  const place = previewResults(request, "success").restaurants[0];
+  const restaurants = Array.from({ length: 20 }, (_, index) => ({ ...place, id: String(index) }));
+  assert.equal(parseSearchResponse({ restaurants, returnedCount: 20 }).restaurants.length, 20);
+  assert.throws(() => parseSearchResponse({ restaurants: [...restaurants, { ...place, id: "21" }], returnedCount: 21 }));
+  const evidence = place.inferredMenu[0].evidence[0];
+  for (const inferredMenu of [undefined, null, [{ name: "料理", evidence: [] }],
+    [{ name: "定食", evidence: [{ ...evidence, quote: "" }] }],
+    [{ name: "定食", evidence: [{ ...evidence, author: null }] }],
+    [{ name: "定食", evidence: [{ ...evidence, publishTime: "not-a-date" }] }]]) {
+    assert.throws(() => parseSearchResponse({ restaurants: [{ ...place, inferredMenu }], returnedCount: 1 }));
+  }
+  assert.equal(parseSearchResponse({ restaurants: [{ ...place, inferredMenu: [] }], returnedCount: 1 }).returnedCount, 1);
+});

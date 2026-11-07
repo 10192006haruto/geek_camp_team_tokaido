@@ -8,8 +8,9 @@ const base: Restaurant = {
   location: { latitude: 35.683, longitude: 139.769 },
   address: "架空の住所：こむぎ町1丁目（開発用）", distanceMeters: null,
   rating: 4.3, reviewCount: 24, photoUrl: null, priceLevel: "moderate", isOpenNow: true,
-  cuisineLabel: "和食", labels: ["郷土料理の記載あり"],
-  recommendationReason: "架空のメニュー情報に、地域の食材を使った郷土料理の定食が記載されています。",
+  inferredMenu: [{ name: "定食", evidence: [{ quote: "定食を食べました。", author: { text: "架空の投稿者", url: null }, reviewUrl: null, publishTime: null }] }],
+  cuisineLabel: "和食", labels: [],
+  recommendationReason: "架空のクチコミに定食の言及があります。",
   googleMapsUrl: null, attributions: [], photoAttributions: [],
 };
 const fixtures: { restaurant: Restaurant }[] = [
@@ -59,6 +60,11 @@ export async function searchCandidatePreview(request: SearchRequest, scenario: P
     { ...base, id: "mock-007", name: "【架空】坂の上の喫茶", cuisineLabel: "カフェ", location: { latitude: 35.695, longitude: 139.769 }, recommendationReason: "架空の店舗紹介に、喫茶店の記載があります。", labels: [], isOpenNow: null },
   ];
   return [...fixtures.map((fixture) => fixture.restaurant), ...extra]
+    .map((r) => {
+      const name = r.cuisineLabel?.includes("そば") ? "そば" : r.cuisineLabel?.includes("うどん") ? "うどん" : r.cuisineLabel === "カフェ" ? "プリン" : "定食";
+      return { ...r, labels: [], recommendationReason: `架空のクチコミに${name}の言及があります。`,
+        inferredMenu: [{ name, evidence: [{ quote: `${name}を食べました。`, author: { text: "架空の投稿者", url: null }, reviewUrl: null, publishTime: null }] }] };
+    })
     .map((r) => ({ ...r, distanceMeters: distanceMeters(request.location, r.location!) }))
     .filter((r) => r.distanceMeters <= request.radiusMeters)
     .map((r) => scenario === "missing" ? { ...r, address: null, rating: null, reviewCount: null, priceLevel: null, isOpenNow: null, cuisineLabel: null, recommendationReason: null, labels: [], distanceMeters: null } : r);
