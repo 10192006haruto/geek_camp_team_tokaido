@@ -1,6 +1,8 @@
 # 検索API契約
 
-> 2026-11-07：ふら担当の料理抽出・画面側を実装し、公開型にinferredMenuを追加、フロント受理上限を20件に更新しました。Yuuto担当の検索APIは旧モック・最大5件のままで、inferredMenu=[]を返す互換状態です。以下の検索順序は既存経路です。新経路への接続事項は[実装・検証記録](review-dishes-implementation-2026-11-07.md)を参照してください。
+> 最新の担当分離：Nearby取得・検索APIへの接続はYuuto担当として今回の変更から外しました。ふら側は取得済み最大20候補を受け取るprepareReviewResultsと、最終5件の選定・表示までです。通常検索は旧モックのままです。[現在の担当境界と検証記録](review-search-integration-2026-11-07.md)を優先してください。
+
+> 2026-11-07：ふら担当の料理抽出・画面側を実装し、公開型にinferredMenuを追加、フロント受理上限を5件に更新しました。Yuuto担当の検索APIは旧モック・最大5件のままで、inferredMenu=[]を返す互換状態です。以下の検索順序は既存経路です。新経路への接続事項は[実装・検証記録](review-dishes-implementation-2026-11-07.md)を参照してください。
 
 ## HTTPとリクエスト
 
@@ -102,8 +104,8 @@ export type SearchError = {
 
 | 項目 | 意味・制約 |
 | --- | --- |
-| restaurants | 公開型・フロント受理上限20件。既存検索APIは最大5件。該当なしは空配列 |
-| returnedCount | 0〜20の整数、restaurants.lengthと一致 |
+| restaurants | 公開型・フロント受理上限5件。既存検索APIは最大5件。該当なしは空配列 |
+| returnedCount | 0〜5の整数、restaurants.lengthと一致 |
 | id / name | 空でない識別子／店名。必須情報を欠く候補は返さない |
 | location | 店舗座標。不明ならオブジェクト全体をnull |
 | address | 住所、不明はnull |

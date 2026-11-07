@@ -185,8 +185,8 @@ export function Kokomeshi() {
               <label htmlFor="rerank-mood">気分を変えて、並べ替え</label><div className="rerank-row"><input id="rerank-mood" value={mood} maxLength={MOOD_LIMIT} onChange={(event) => setMood(event.target.value)} placeholder="例：そばが食べたい" /><button className="compact-primary" disabled={!!busy}>並べ替え</button></div>
             </form>
             <p className="muted">{result.batch.scope === "server-results"
-              ? "料理の情報がある候補に営業条件・気分を適用し、最大20件を表示します。"
-              : "表示状態の確認用データです。取得済みの架空候補から最大20件を表示します。"}</p>
+              ? "料理の情報がある候補に営業条件・気分を適用し、最大5件を表示します。"
+              : "表示状態の確認用データです。取得済みの架空候補から最大5件を表示します。"}</p>
             <p className="muted">料理名・料理ジャンルで判断できる気分に対応。一致が不明なお店も残します。</p>
           </div>
           {(result.mode === "demo" || result.displayed.some((r) => r.id.startsWith("mock-"))) && <p className="scope-note">店舗・クチコミ・営業情報・評価はすべて架空です。実際の店舗写真や経路はありません。</p>}

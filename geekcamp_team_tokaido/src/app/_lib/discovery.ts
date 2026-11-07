@@ -19,7 +19,7 @@ export type Rank = (candidates: Restaurant[], mood: string, signal: AbortSignal)
 
 export const acquireCandidates: Acquire = async (request, signal) => {
   const payload = { location: request.location, ...request.conditions };
-  // Explicit UI demo stays local until Yuuto connects the review-based HTTP pipeline.
+  // Explicit UI demo stays local and never calls external APIs.
   if (request.mode === "demo")
     return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool" };
   const response = await searchRestaurants(payload, signal);
@@ -46,7 +46,7 @@ export class DiscoverySession {
   private revision = 0;
   constructor(private acquire: Acquire = acquireCandidates, private rank: Rank = rankByMood) {}
   cancel() { this.revision++; this.controller?.abort(); }
-  needsAcquisition(request: DiscoveryRequest) { return this.cached?.key !== candidateKey(request); }
+  needsAcquisition(request: DiscoveryRequest) { return request.mode === "live" || this.cached?.key !== candidateKey(request); }
   async run(request: DiscoveryRequest, refresh = false): Promise<DiscoveryResult> {
     this.cancel();
     const revision = this.revision;
@@ -61,9 +61,9 @@ export class DiscoverySession {
     };
     try {
       timer = setTimeout(() => controller.abort(new Error("検索に時間がかかっています。もう一度お試しください。")), 15000);
-      const batch = !refresh && this.cached?.key === key ? this.cached.batch : await this.acquire(request, signal);
+      const batch = request.mode === "demo" && !refresh && this.cached?.key === key ? this.cached.batch : await this.acquire(request, signal);
       ensureCurrent();
-      this.cached = { key, batch };
+      if (request.mode === "demo") this.cached = { key, batch };
       if (batch.scope === "server-results") {
         return { batch, displayed: batch.candidates, eligibleCount: batch.candidates.length,
           applied: { ...request.conditions, mood: request.conditions.mood.trim() },

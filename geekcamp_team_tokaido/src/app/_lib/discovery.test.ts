@@ -31,8 +31,8 @@ test("ranking considers candidates beyond the first five", async () => {
   const candidates = Array.from({ length: 7 }, (_, i) => ({ ...pool[0], id: String(i), cuisineLabel: i === 6 ? "うどん" : "和食" }));
   const session = new DiscoverySession(async () => ({ candidates, scope: "demo-pool" }));
   const ordinary = await session.run(request);
-  assert.equal(ordinary.displayed.length, 7);
-  assert.ok(ordinary.displayed.some((r) => r.id === "6"));
+  assert.equal(ordinary.displayed.length, 5);
+  assert.ok(!ordinary.displayed.some((r) => r.id === "6"));
   const ranked = await session.run({ ...request, conditions: { ...request.conditions, mood: "麺もの" } });
   assert.equal(ranked.displayed[0].id, "6");
   assert.equal(ranked.batch.candidates.length, 7);
@@ -129,5 +129,5 @@ test("HTTP adapter sends all three conditions and marks completed server results
   assert.deepEqual(result.displayed, pool);
   assert.equal(result.notice, null);
   await session.run(changed);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });

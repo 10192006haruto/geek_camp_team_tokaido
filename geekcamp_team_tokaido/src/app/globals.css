@@ -1216,3 +1216,5 @@ textarea {
 .review-avatar { border-radius: 50%; object-fit: cover; }
 .review-evidence a { text-decoration: underline; }
 .review-evidence summary { cursor: pointer; }
+
+.google-maps-attribution { font-family: Arial, sans-serif; font-style: normal; font-weight: 400; font-size: 12px; letter-spacing: normal; white-space: nowrap; color: #5e5e5e; }

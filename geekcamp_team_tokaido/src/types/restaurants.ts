@@ -1,7 +1,7 @@
 /** 検索APIでフロントエンドとサーバーが共有するリクエスト・レスポンスの型。 */
 export type Location = { latitude: number; longitude: number };
 export const MOOD_LIMIT = 150;
-export const MAX_SEARCH_RESULTS = 20;
+export const MAX_SEARCH_RESULTS = 5;
 export type SearchConditions = {
   radiusMeters: 500 | 1000 | 3000;
   mood: string;

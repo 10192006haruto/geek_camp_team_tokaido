@@ -6,7 +6,7 @@ import { safeExternalUrl } from "../_lib/search";
 import { Pin } from "./artwork";
 
 export function Credits({ items }: { items: Attribution[] }) {
-  return items.length > 0 ? <ul className="credits">{items.map((item, index) => <li key={index}>
+  return items.length > 0 ? <ul className="credits">{items.map((item, index) => <li key={index} className={item.text === "Google Maps" ? "google-maps-attribution" : undefined} translate={item.text === "Google Maps" ? "no" : undefined}>
     {safeExternalUrl(item.url) ? <a href={safeExternalUrl(item.url)} target="_blank" rel="noopener noreferrer">{item.text}</a> : item.text}
   </li>)}</ul> : null;
 }
@@ -73,6 +73,7 @@ export function ReviewDishes({ restaurant }: { restaurant: Restaurant }) {
   return <section className="review-dishes" aria-labelledby="review-dishes-title">
     <h2 id="review-dishes-title">クチコミで言及された料理</h2>
     <p className="muted">過去のクチコミから抽出した情報です。現在の提供を保証するものではありません。</p>
+    {restaurant.attributions.some((a) => a.text === "Google Maps") && <p className="muted">Google Mapsが関連性順に返した最大5件のクチコミから、料理への言及を抽出しています。</p>}
     {restaurant.inferredMenu.length === 0 ? <p>クチコミからの料理情報は未取得です。</p>
       : <ul className="dish-list">{restaurant.inferredMenu.map((item, index) => <li key={`${item.name}-${index}`}>
         <h3>{item.name}</h3>
