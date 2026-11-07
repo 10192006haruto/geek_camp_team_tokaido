@@ -25,7 +25,8 @@ export function selectReviewRestaurants(candidates: ReviewCandidate[], inference
       return evidence.length ? [{ name: item.name, evidence }] : [];
     });
     if (!inferredMenu.length) return [];
-    const { reviews, ...restaurant } = candidate;
+    const { reviews, photoResource, ...restaurant } = candidate;
+    void photoResource;
     void reviews;
     return [{ ...restaurant, distanceMeters: distance, inferredMenu, labels: [],
       recommendationReason: `クチコミに${inferredMenu.map((item) => item.name).join("・")}の言及あり` }];

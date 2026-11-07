@@ -1,6 +1,7 @@
 import type { SearchRequest, SearchResponse } from "../../types/restaurants";
 import { fetchMockReviewCandidates, mockMenuInference } from "./mock-data";
 import { PlacesSearchError } from "./errors";
+import { attachRestaurantPhotos } from "./photos";
 import { fetchNearbyCandidates } from "./nearby-search";
 import { selectReviewRestaurants } from "./review-results";
 import { distanceMeters } from "./distance";
@@ -11,7 +12,7 @@ import type { MenuInference, ReviewCandidate } from "../discovery/review-types";
 /** 全国展開している飲食チェーン（national-chains.ts の店名リスト）を候補から除く。 */
 export const excludeNationalChains = (candidates: ReviewCandidate[]) => candidates.filter((c) => !isNationalChain(c.name));
 
-/** 検索全体（Places＋Gemini＋検証）の期限。位置情報の取得は含まない。 */
+/** 候補取得・料理抽出・検証の期限。写真取得には別途最大3秒を確保する。 */
 export const SEARCH_DEADLINE_MS = 10_000;
 
 /**
@@ -89,7 +90,11 @@ export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Pro
   const uncheckedCount = unchecked.filter((c) => c.location
     && distanceMeters(req.location, c.location) <= req.radiusMeters
     && (!req.openNow || c.isOpenNow === true)).length;
-  return selectReviewRestaurants(candidates, inference, req, uncheckedCount);
+  const result = selectReviewRestaurants(candidates, inference, req, uncheckedCount);
+  // 抽出の期限切れで途中結果を返す場合も、写真には独立した取得時間を確保する。
+  await attachRestaurantPhotos(result.restaurants, candidates, signal);
+  if (cancelledByUser(signal)) signal.throwIfAborted();
+  return result;
 }
 
 /** モックの経路：架空の候補と固定の抽出結果を、本番と同じ照合・選定に通す。外部通信なし。 */

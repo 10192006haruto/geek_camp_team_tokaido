@@ -45,7 +45,7 @@ test('request body and field mask follow the plan (20 places, reviews, distance 
   assert.equal(body.languageCode, 'ja');
   assert.deepEqual(body.locationRestriction.circle, { center: req.location, radius: 3000 });
   assert.ok(NEARBY_FIELD_MASK.split(',').includes('places.reviews'));
-  assert.ok(!NEARBY_FIELD_MASK.includes('photos'));
+  assert.ok(NEARBY_FIELD_MASK.split(',').includes('places.photos'));
 });
 
 test('normalizes a place into ReviewCandidate without inventing values', () => {
