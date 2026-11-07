@@ -87,3 +87,100 @@ test("HTTP pipeline returns reasons and strict validation without external calls
   assert.equal((await post(request, "application/json-invalid")).status, 415);
   for (const handler of [GET, OPTIONS]) { const response = handler(); assert.equal(response.status, 405); assert.equal(response.headers.get("allow"), "POST"); }
 });
+
+// ---- 実APIの経路（Places・Gemini は架空のレスポンスに差し替え。実通信なし） ----
+const { resolveDataSource, searchPlaces } = await import("./search.ts");
+
+function withEnv(t, patch) {
+  const saved = Object.fromEntries(Object.keys(patch).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(patch)) { if (v === null) delete process.env[k]; else process.env[k] = v; }
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+}
+function stubFetch(t, routes) {
+  const saved = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push(String(url));
+    const handler = String(url).startsWith("https://places.googleapis.com/") ? routes.places : routes.gemini;
+    return handler(init);
+  };
+  t.after(() => { globalThis.fetch = saved; });
+  return calls;
+}
+const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const fakePlaces = () => jsonResponse({ places: [{
+  id: "fake-place-1", displayName: { text: "【架空】ここメシ食堂" }, location: { latitude: 35.6815, longitude: 139.7672 },
+  currentOpeningHours: { openNow: true }, userRatingCount: 3,
+  reviews: [{ text: { text: "天ぷらそばを食べました。", languageCode: "ja" }, authorAttribution: { displayName: "架空投稿者" } }],
+}] });
+const fakeGemini = (results) => () => jsonResponse({ candidates: [{ finishReason: "STOP",
+  content: { parts: [{ text: JSON.stringify({ results }) }] } }] });
+const geminiOk = fakeGemini([{ placeId: "fake-place-1",
+  items: [{ name: "天ぷらそば", evidence: [{ reviewIndex: 0, quote: "天ぷらそばを食べました。" }] }] }]);
+const livePost = (body, init = {}) => POST(new Request("http://localhost/api/restaurants/search", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), ...init,
+}));
+
+test("data source must be explicit outside development", () => {
+  assert.equal(resolveDataSource({ RESTAURANT_DATA_SOURCE: "places" }), "places");
+  assert.equal(resolveDataSource({ RESTAURANT_DATA_SOURCE: "mock", NODE_ENV: "production" }), "mock");
+  assert.equal(resolveDataSource({ NODE_ENV: "development" }), "mock");
+  assert.equal(resolveDataSource({}), "mock");
+  assert.throws(() => resolveDataSource({ NODE_ENV: "production" }), { code: "SERVICE_UNAVAILABLE" });
+  assert.throws(() => resolveDataSource({ RESTAURANT_DATA_SOURCE: "real" }), { code: "SERVICE_UNAVAILABLE" });
+});
+
+test("places mode: Nearby → Gemini → verified dishes reach the HTTP response", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const calls = stubFetch(t, { places: fakePlaces, gemini: geminiOk });
+  const response = await livePost(request);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const body = await response.json();
+  assert.equal(body.returnedCount, 1);
+  assert.equal(body.restaurants[0].inferredMenu[0].name, "天ぷらそば");
+  assert.equal(body.restaurants[0].inferredMenu[0].evidence[0].author.text, "架空投稿者");
+  assert.equal(calls.length, 2);
+});
+
+test("places mode: upstream failures map to 502 / 503 / 504 without leaking details", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const cases = [
+    [{ places: () => jsonResponse({ error: { message: "secret detail" } }, 403), gemini: geminiOk }, 503, "SERVICE_UNAVAILABLE"],
+    [{ places: () => jsonResponse({}, 500), gemini: geminiOk }, 502, "SEARCH_FAILED"],
+    [{ places: fakePlaces, gemini: () => jsonResponse({ error: "secret detail" }, 500) }, 502, "SEARCH_FAILED"],
+    [{ places: fakePlaces, gemini: () => jsonResponse({}, 429) }, 503, "SERVICE_UNAVAILABLE"],
+    [{ places: fakePlaces, gemini: fakeGemini([{ placeId: "unknown", items: [] }]) }, 502, "SEARCH_FAILED"],
+  ];
+  for (const [routes, status, code] of cases) {
+    stubFetch(t, routes);
+    const response = await livePost(request);
+    assert.equal(response.status, status);
+    const text = await response.text();
+    assert.equal(JSON.parse(text).error.code, code);
+    assert.ok(!text.includes("secret detail") && !text.includes("fake-places"));
+  }
+});
+
+test("places mode: missing key is 503 and no-dish result is an empty 200", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: null, GEMINI_API_KEY: "fake-gemini" });
+  const calls = stubFetch(t, { places: fakePlaces, gemini: geminiOk });
+  assert.equal((await livePost(request)).status, 503);
+  assert.equal(calls.length, 0);
+  process.env.GOOGLE_PLACES_API_KEY = "fake-places";
+  stubFetch(t, { places: fakePlaces, gemini: fakeGemini([{ placeId: "fake-place-1", items: [] }]) });
+  const empty = await livePost(request);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(await empty.json(), { restaurants: [], returnedCount: 0 });
+});
+
+test("places mode: one shared deadline turns a hanging upstream into 504", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const hang = (init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)));
+  stubFetch(t, { places: hang, gemini: geminiOk });
+  await assert.rejects(searchPlaces(request, AbortSignal.timeout(20)), { code: "UPSTREAM_TIMEOUT" });
+  stubFetch(t, { places: fakePlaces, gemini: hang });
+  await assert.rejects(searchPlaces(request, AbortSignal.timeout(20)), { code: "UPSTREAM_TIMEOUT" });
+  const response = await livePost(request, { signal: AbortSignal.timeout(20) });
+  assert.equal(response.status, 504);
+});
