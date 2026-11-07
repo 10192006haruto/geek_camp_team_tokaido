@@ -4,8 +4,12 @@ import { PlacesSearchError } from "./errors";
 import { fetchNearbyCandidates } from "./nearby-search";
 import { selectReviewRestaurants } from "./review-results";
 import { distanceMeters } from "./distance";
+import { isNationalChain } from "./national-chains";
 import { inferMenus, MenuInferenceError } from "../discovery/infer-menus";
 import type { MenuInference, ReviewCandidate } from "../discovery/review-types";
+
+/** 全国展開している飲食チェーン（national-chains.ts の店名リスト）を候補から除く。 */
+export const excludeNationalChains = (candidates: ReviewCandidate[]) => candidates.filter((c) => !isNationalChain(c.name));
 
 /** 検索全体（Places＋Gemini＋検証）の期限。位置情報の取得は含まない。 */
 export const SEARCH_DEADLINE_MS = 10_000;
@@ -76,7 +80,8 @@ export function resolveDataSource(env: Record<string, string | undefined> = proc
 export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
   // 取得と抽出で同じ期限を共有する。呼び出しごとに新しい10秒を与えない。
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(SEARCH_DEADLINE_MS)]);
-  const candidates = await fetchNearbyCandidates(req, deadline);
+  // 全国チェーンは Gemini に送る前に除く（料金・時間の節約。未確認数にも数えない）。
+  const candidates = excludeNationalChains(await fetchNearbyCandidates(req, deadline));
   const { inference, unchecked } = await inferMenusInBatches(candidates, deadline);
   // 期限切れで一部だけ確認できた場合は途中結果として返す。利用者の中断時だけ止める。
   if (cancelledByUser(signal)) signal.throwIfAborted();
@@ -89,7 +94,7 @@ export async function searchPlaces(req: SearchRequest, signal: AbortSignal): Pro
 
 /** モックの経路：架空の候補と固定の抽出結果を、本番と同じ照合・選定に通す。外部通信なし。 */
 export async function searchMock(req: SearchRequest, signal: AbortSignal): Promise<SearchResponse> {
-  const candidates = await fetchMockReviewCandidates(req, signal);
+  const candidates = excludeNationalChains(await fetchMockReviewCandidates(req, signal));
   signal.throwIfAborted();
   return selectReviewRestaurants(candidates, mockMenuInference(candidates), req);
 }
