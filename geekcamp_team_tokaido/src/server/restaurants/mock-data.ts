@@ -78,6 +78,7 @@ function toCandidate(shop: MockShop, i: number): ReviewCandidate {
     photoUrl: null,
     priceLevel: null,
     isOpenNow: shop.isOpenNow,
+    openingHours: null,
     cuisineLabel: shop.cuisineLabel,
     googleMapsUrl: null,
     attributions: [],

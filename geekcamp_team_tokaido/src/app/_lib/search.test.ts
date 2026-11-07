@@ -111,3 +111,13 @@ test("review response supports five unique restaurants and validates menu eviden
   }
   assert.equal(parseSearchResponse({ restaurants: [{ ...place, inferredMenu: [] }], returnedCount: 1, uncheckedCount: 0 }).returnedCount, 1);
 });
+
+test("opening hours accept null and descriptions but reject malformed values", () => {
+  const restaurant = previewResults({ ...DEFAULT_FILTERS, location: DEMO_LOCATION }, "success").restaurants[0];
+  for (const openingHours of [null, ['月曜日: 定休日', '火曜日: 24 時間営業']]) {
+    assert.deepEqual(parseSearchResponse({ restaurants: [{ ...restaurant, openingHours }], returnedCount: 1, uncheckedCount: 0 }).restaurants[0].openingHours, openingHours);
+  }
+  for (const openingHours of [undefined, [], [''], [3], '月曜日', Array(8).fill('営業時間')]) {
+    assert.throws(() => parseSearchResponse({ restaurants: [{ ...restaurant, openingHours }], returnedCount: 1, uncheckedCount: 0 }));
+  }
+});

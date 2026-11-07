@@ -7,6 +7,7 @@ const base: Restaurant = {
   id: "mock-001", name: "【架空】路地裏のごはん こむぎ",
   location: { latitude: 35.683, longitude: 139.769 },
   address: "架空の住所：こむぎ町1丁目（開発用）", distanceMeters: null,
+  openingHours: null,
   rating: 4.3, reviewCount: 24, photoUrl: null, priceLevel: "moderate", isOpenNow: true,
   inferredMenu: [{ name: "定食", evidence: [{ quote: "定食を食べました。", author: { text: "架空の投稿者", url: null }, reviewUrl: null, publishTime: null }] }],
   cuisineLabel: "和食", labels: [],

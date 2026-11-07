@@ -22,6 +22,7 @@ export const NEARBY_FIELD_MASK = [
   "places.userRatingCount",
   "places.priceLevel",
   "places.currentOpeningHours.openNow",
+  "places.regularOpeningHours.weekdayDescriptions",
   "places.reviews",
   "places.photos",
 ].join(",");
@@ -182,6 +183,7 @@ export function normalizeNearbyResponse(payload: unknown): ReviewCandidate[] {
       photoResource: normalizePhotoResource(place.photos, id),
       priceLevel: typeof place.priceLevel === "string" ? PRICE_LEVELS[place.priceLevel] ?? null : null,
       isOpenNow: typeof openNow === "boolean" ? openNow : null,
+      openingHours: normalizeOpeningHours(place.regularOpeningHours),
       cuisineLabel: localizedText(place.primaryTypeDisplayName),
       googleMapsUrl: safeUrl(place.googleMapsUri, true),
       attributions: [],
@@ -207,4 +209,12 @@ function normalizePhotoResource(value: unknown, id: string): ReviewCandidate["ph
     return { name: photo.name, attributions };
   }
   return null;
+}
+
+/** 曜日の並び・24時間営業・中休みなどは取得元の表記をそのまま保持する。 */
+function normalizeOpeningHours(value: unknown): string[] | null {
+  const days = object(value) ? value.weekdayDescriptions : null;
+  return Array.isArray(days) && days.length > 0 && days.length <= 7
+    && days.every((day) => typeof day === "string" && day.trim().length > 0)
+    ? days.map((day: string) => day.trim()) : null;
 }

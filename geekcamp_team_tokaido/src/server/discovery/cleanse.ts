@@ -97,6 +97,9 @@ export function cleanseCandidates(input: unknown): CandidateRestaurant[] {
       reviewCount: reviews !== null && Number.isInteger(reviews) ? reviews : null,
       photoUrl: url(row.photoUrl),
       priceLevel: prices.includes(row.priceLevel as PriceLevel) ? row.priceLevel as PriceLevel : null,
+      openingHours: Array.isArray(row.openingHours) && row.openingHours.length > 0 && row.openingHours.length <= 7
+        && row.openingHours.every((day) => typeof day === "string" && day.trim())
+        ? row.openingHours.map((day: string) => day.trim()) : null,
       isOpenNow: typeof row.isOpenNow === "boolean" ? row.isOpenNow : null,
       cuisineLabel: text(row.cuisineLabel), googleMapsUrl: url(row.googleMapsUrl, true),
       attributions: attributions(row.attributions), photoAttributions: attributions(row.photoAttributions),

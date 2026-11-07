@@ -109,22 +109,30 @@ export function RestaurantDetail({ restaurant: r, demo, onBack, onHome }: { rest
       <nav className="photo-nav" aria-label="店舗詳細の移動"><button className="glass-pill" onClick={onBack}>‹ 候補一覧</button><button className="glass-pill" onClick={onHome}>ホーム</button></nav>
     </div>
     <div className="detail-body">
+      <header className="detail-heading">
       {demo && <p className="demo-badge">架空店舗のデモ</p>}
       <h1 id="detail-title" tabIndex={-1}>{r.name}</h1>
       {r.cuisineLabel && <p className="detail-cuisine">{r.cuisineLabel}</p>}
       <RestaurantMeta restaurant={r} />
+      </header>
       <ReviewDishes restaurant={r} />
       <Credits items={r.attributions} />
+      <section className="detail-facts" aria-labelledby="detail-facts-title">
+      <h2 id="detail-facts-title">お店の基本情報</h2>
       <dl className="detail-info">
         <div><dt>住所</dt><dd>{r.address ?? "情報なし"}</dd></div>
-        <div><dt>営業情報</dt><dd>{r.isOpenNow === null ? "営業状況不明" : r.isOpenNow ? "取得時点では営業中" : "取得時点では営業時間外"}<small>営業時間の詳細は未取得です。</small></dd></div>
+        <div><dt>営業情報</dt><dd>{r.isOpenNow === null ? "営業状況不明" : r.isOpenNow ? "取得時点では営業中" : "取得時点では営業時間外"}</dd></div>
+        <div><dt>通常の営業時間</dt><dd>{r.openingHours?.length ? <><ul className="opening-hours">{r.openingHours.map((day, index) => <li key={index}>{day}</li>)}</ul><small>祝日・臨時休業などで変更される場合があります。</small></> : <span>営業時間不明</span>}</dd></div>
         <div><dt>価格情報</dt><dd>{r.priceLevel === null ? "情報なし" : priceLabels[r.priceLevel]}<small>価格帯は実際の金額とは異なります。</small></dd></div>
         <div><dt>評価</dt><dd>{r.rating === null ? "評価不明" : `${r.rating.toFixed(1)} / 5`}<small>{r.reviewCount === null ? "レビュー数不明" : `レビュー ${r.reviewCount.toLocaleString()}件`}</small></dd></div>
       </dl>
+      </section>
       {photosFor(r).some((photo) => photo.attributions.length) && <section className="photo-credits"><h2>写真の出典</h2>{photosFor(r).map((photo) => <Credits key={photo.url} items={photo.attributions} />)}</section>}
+      <div className="detail-actions">
       {directions ? <a className="primary" href={directions} target="_blank" rel="noopener noreferrer">この店への経路を見る <span aria-hidden="true">↗</span><span className="sr-only">（Google Maps・新しいタブ）</span></a>
         : <><button className="primary" disabled>この店への経路を見る ↗</button><p className="muted">{demo ? "架空店舗のため、実際の経路はありません。" : "経路の表示に必要な位置情報が未取得です。"}</p></>}
       <button className="text-button detail-back" onClick={onBack}>‹ 候補一覧へ戻る</button>
+      </div>
     </div>
   </section>;
 }

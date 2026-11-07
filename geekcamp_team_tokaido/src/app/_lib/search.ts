@@ -37,6 +37,9 @@ export function isRestaurant(value: unknown): value is Restaurant {
       && Array.isArray(photo.attributions) && photo.attributions.every(attribution))))
     && nullableText(value.photoUrl) && nullableText(value.cuisineLabel)
     && nullableText(value.recommendationReason) && nullableText(value.googleMapsUrl)
+    && (value.openingHours === null || (Array.isArray(value.openingHours)
+      && value.openingHours.length > 0 && value.openingHours.length <= 7
+      && value.openingHours.every((day) => typeof day === "string" && day.trim().length > 0)))
     && (value.isOpenNow === null || typeof value.isOpenNow === "boolean")
     && (value.priceLevel === null || ["free", "inexpensive", "moderate", "expensive", "very_expensive"].includes(value.priceLevel as string))
     && inferredMenu(value.inferredMenu)

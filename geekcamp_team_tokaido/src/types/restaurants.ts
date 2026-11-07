@@ -36,6 +36,8 @@ export type Restaurant = {
   photoUrl: string | null;
   priceLevel: PriceLevel | null;
   isOpenNow: boolean | null;
+  /** 通常の曜日別営業時間。取得元の順序を保持。不明はnull。 */
+  openingHours: string[] | null;
   cuisineLabel: string | null;
   inferredMenu: InferredMenuItem[];
   labels: string[];
