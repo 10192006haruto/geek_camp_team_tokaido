@@ -1,6 +1,7 @@
 /** 検索APIでフロントエンドとサーバーが共有するリクエスト・レスポンスの型。 */
 export type Location = { latitude: number; longitude: number };
 export const MOOD_LIMIT = 150;
+export const MAX_SEARCH_RESULTS = 20;
 export type SearchConditions = {
   radiusMeters: 500 | 1000 | 3000;
   mood: string;
@@ -13,6 +14,17 @@ export type Attribution = {
 };
 export type PriceLevel =
   | "free" | "inexpensive" | "moderate" | "expensive" | "very_expensive";
+export type ReviewEvidence = {
+  quote: string;
+  author: Attribution;
+  reviewUrl: string | null;
+  publishTime: string | null;
+  // Optional transport metadata until the retrieval-side contract is finalized.
+  authorPhotoUrl?: string | null;
+  originalText?: string | null;
+  translated?: boolean;
+};
+export type InferredMenuItem = { name: string; evidence: ReviewEvidence[] };
 export type Restaurant = {
   id: string;
   name: string;
@@ -25,6 +37,7 @@ export type Restaurant = {
   priceLevel: PriceLevel | null;
   isOpenNow: boolean | null;
   cuisineLabel: string | null;
+  inferredMenu: InferredMenuItem[];
   labels: string[];
   recommendationReason: string | null;
   googleMapsUrl: string | null;

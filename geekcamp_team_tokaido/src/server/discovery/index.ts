@@ -62,6 +62,7 @@ function selectRecommendations(
       evidence,
       restaurant: {
         ...restaurant,
+        inferredMenu: [],
         distanceMeters: restaurant.distanceMeters ?? straightLineMeters(config.searchLocation, restaurant.location),
         labels: decision.labels,
         recommendationReason: formatRecommendationReason(evidence),
@@ -75,3 +76,6 @@ function selectRecommendations(
     return left === right ? 0 : left - right;
   }).slice(0, 5);
 }
+
+export { inferMenus, MenuInferenceError } from "./infer-menus";
+export type { ReviewCandidate, PlaceReview, MenuInference, InferredMenuItemDraft } from "./review-types";

@@ -17,7 +17,7 @@ export async function selectRestaurants(input: unknown, req: SearchRequest, sign
     if (!decision?.selected || (req.openNow && candidate.isOpenNow !== true)) return [];
     const { localDishes, menuItems, isChain, ...restaurant } = candidate;
     void localDishes; void menuItems; void isChain;
-    return [{ restaurant: { ...restaurant, labels: decision.labels, recommendationReason: decision.recommendationReason },
+    return [{ restaurant: { ...restaurant, inferredMenu: [], labels: decision.labels, recommendationReason: decision.recommendationReason },
       dishes: decision.evidence.map((e) => e.dish).join(" ") }];
   }).sort((a, b) => a.restaurant.distanceMeters! - b.restaurant.distanceMeters!);
   const restaurants = orderByMood(eligible, req.mood, (item) => `${item.dishes} ${item.restaurant.cuisineLabel ?? ""}`)

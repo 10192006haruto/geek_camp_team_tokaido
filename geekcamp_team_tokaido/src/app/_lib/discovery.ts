@@ -2,7 +2,7 @@ import type { Location, PreviewScenario, Restaurant } from "./restaurant-types";
 import { searchRestaurants } from "./search";
 import { searchCandidatePreview } from "./preview";
 
-import { MOOD_LIMIT, type SearchConditions } from "../../types/restaurants";
+import { MOOD_LIMIT, MAX_SEARCH_RESULTS, type SearchConditions } from "../../types/restaurants";
 import { orderByMood } from "../../lib/restaurants/mood";
 export { MOOD_LIMIT };
 export type Conditions = SearchConditions;
@@ -19,8 +19,8 @@ export type Rank = (candidates: Restaurant[], mood: string, signal: AbortSignal)
 
 export const acquireCandidates: Acquire = async (request, signal) => {
   const payload = { location: request.location, ...request.conditions };
-  // Normal demo also traverses the real HTTP / classification pipeline at fixed coordinates.
-  if (request.mode === "demo" && request.scenario !== "success")
+  // Explicit UI demo stays local until Yuuto connects the review-based HTTP pipeline.
+  if (request.mode === "demo")
     return { candidates: await searchCandidatePreview(payload, request.scenario, signal), scope: "demo-pool" };
   const response = await searchRestaurants(payload, signal);
   return { candidates: response.restaurants, scope: "server-results" };
@@ -36,7 +36,7 @@ export const rankByMood: Rank = async (candidates, mood, signal) => {
 export function candidateKey(request: DiscoveryRequest) {
   return [request.mode, request.location.latitude, request.location.longitude, request.conditions.radiusMeters,
     request.mode === "demo" ? request.scenario : "live",
-    ...(request.mode === "demo" && request.scenario !== "success" ? [] : [request.conditions.mood, request.conditions.openNow])].join(":");
+    ...(request.mode === "demo" ? [] : [request.conditions.mood, request.conditions.openNow])].join(":");
 }
 
 /** Owns a single in-memory candidate set. No coordinates or mood are persisted. */
@@ -86,7 +86,7 @@ export class DiscoverySession {
         ranked = eligible;
       }
       ensureCurrent();
-      return { batch, displayed: ranked.slice(0, 5), eligibleCount: eligible.length,
+      return { batch, displayed: ranked.slice(0, MAX_SEARCH_RESULTS), eligibleCount: eligible.length,
         applied: { ...request.conditions, mood: request.conditions.mood.trim().slice(0, MOOD_LIMIT) },
         location: request.location, mode: request.mode, scenario: request.scenario, notice };
     } finally { clearTimeout(timer); }

@@ -1,8 +1,6 @@
 # 検索API契約
 
-> 次の実装予定は[レビュー料理抽出MVP仕様](review-dishes-mvp-spec.md)を参照してください。本書は既存のご当地判定・最大5件版の記録であり、レビュー抽出・最大20件版への実装時に更新します。
-
-3条件版の実装契約です。店舗取得は東京駅周辺の架空店舗を使うモックです。外部APIは呼びません。
+> 2026-11-07：ふら担当の料理抽出・画面側を実装し、公開型にinferredMenuを追加、フロント受理上限を20件に更新しました。Yuuto担当の検索APIは旧モック・最大5件のままで、inferredMenu=[]を返す互換状態です。以下の検索順序は既存経路です。新経路への接続事項は[実装・検証記録](review-dishes-implementation-2026-11-07.md)を参照してください。
 
 ## HTTPとリクエスト
 
@@ -40,7 +38,7 @@
 
 ## 共有TypeScript型
 
-配置：`src/types/restaurants.ts`。サーバー専用コードをimportしません。下記に`?`はなく、全キー必須です。
+配置：`src/types/restaurants.ts`。サーバー専用コードをimportしません。基本項目は全キー必須です。レビューの補足メタデータのみ任意です。
 
 ```ts
 export type Location = { latitude: number; longitude: number };
@@ -56,6 +54,16 @@ export type Attribution = {
 };
 export type PriceLevel =
   | "free" | "inexpensive" | "moderate" | "expensive" | "very_expensive";
+export type ReviewEvidence = {
+  quote: string;
+  author: Attribution;
+  reviewUrl: string | null;
+  publishTime: string | null;
+  authorPhotoUrl?: string | null;
+  originalText?: string | null;
+  translated?: boolean;
+};
+export type InferredMenuItem = { name: string; evidence: ReviewEvidence[] };
 export type Restaurant = {
   id: string;
   name: string;
@@ -68,6 +76,7 @@ export type Restaurant = {
   priceLevel: PriceLevel | null;
   isOpenNow: boolean | null;
   cuisineLabel: string | null;
+  inferredMenu: InferredMenuItem[];
   labels: string[];
   recommendationReason: string | null;
   googleMapsUrl: string | null;
@@ -93,8 +102,8 @@ export type SearchError = {
 
 | 項目 | 意味・制約 |
 | --- | --- |
-| restaurants | 配列。最大5件。該当なしは空配列 |
-| returnedCount | 0〜5の整数、restaurants.lengthと一致 |
+| restaurants | 公開型・フロント受理上限20件。既存検索APIは最大5件。該当なしは空配列 |
+| returnedCount | 0〜20の整数、restaurants.lengthと一致 |
 | id / name | 空でない識別子／店名。必須情報を欠く候補は返さない |
 | location | 店舗座標。不明ならオブジェクト全体をnull |
 | address | 住所、不明はnull |
@@ -105,6 +114,7 @@ export type SearchError = {
 | priceLevel | 価格帯、不明はnull。「moderate」などを円の金額として表示しない |
 | isOpenNow | true＝営業中、false＝営業していない、null＝不明。閉業とは区別 |
 | cuisineLabel | 表示用ジャンル、不明はnull |
+| inferredMenu | 必須配列。料理は最大10品、各料理に1〜5件の引用。旧モック・判定経路では[]。新しいレビュー経路は1品以上の店を返す予定 |
 | labels | 根拠のあるラベルの配列。付与なしは[] |
 | recommendationReason | 取得情報に裏付けられた理由。根拠不足はnull |
 | googleMapsUrl | 検証したGoogle Mapsリンク、取得できない場合はnull |
@@ -131,6 +141,7 @@ export type SearchError = {
       "priceLevel": null,
       "isOpenNow": null,
       "cuisineLabel": "和食",
+      "inferredMenu": [],
       "labels": ["ご当地料理"],
       "recommendationReason": "東京名物の深川めしを提供",
       "googleMapsUrl": null,
