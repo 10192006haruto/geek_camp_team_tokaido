@@ -9,7 +9,7 @@ const MAX_REVIEWS = 5;
 
 /**
  * 取得するフィールド。places.reviews を含むため Nearby Search Enterprise + Atmosphere の料金区分になる。
- * photos は別料金の取得が必要なため含めない。
+ * photos は参照情報のみ。画像URLの取得は最終候補に限定する。
  */
 export const NEARBY_FIELD_MASK = [
   "places.id",
@@ -23,6 +23,7 @@ export const NEARBY_FIELD_MASK = [
   "places.priceLevel",
   "places.currentOpeningHours.openNow",
   "places.reviews",
+  "places.photos",
 ].join(",");
 
 /** Nearby Search のリクエスト本文。includedTypes の範囲はチームで確認中。 */
@@ -178,6 +179,7 @@ export function normalizeNearbyResponse(payload: unknown): ReviewCandidate[] {
       rating: finiteIn(place.rating, 0, 5),
       reviewCount: Number.isSafeInteger(reviewCount) && (reviewCount as number) >= 0 ? (reviewCount as number) : null,
       photoUrl: null,
+      photoResource: normalizePhotoResource(place.photos, id),
       priceLevel: typeof place.priceLevel === "string" ? PRICE_LEVELS[place.priceLevel] ?? null : null,
       isOpenNow: typeof openNow === "boolean" ? openNow : null,
       cuisineLabel: localizedText(place.primaryTypeDisplayName),
@@ -187,4 +189,22 @@ export function normalizeNearbyResponse(payload: unknown): ReviewCandidate[] {
       reviews: toReviews(place.reviews),
     }];
   });
+}
+
+/** 写真参照は検索ごとに取得し、永続保存しない。 */
+function normalizePhotoResource(value: unknown, id: string): ReviewCandidate["photoResource"] {
+  if (!Array.isArray(value)) return null;
+  for (const photo of value) {
+    if (!object(photo) || typeof photo.name !== "string"
+      || !/^places\/[^/]+\/photos\/[A-Za-z0-9_-]+$/.test(photo.name)
+      || photo.name.split("/")[1] !== id) continue;
+    const authors = Array.isArray(photo.authorAttributions) ? photo.authorAttributions : [];
+    // 投稿者情報が壊れている写真は、帰属を省略して表示しない。
+    if (authors.some((author) => !object(author) || !nonEmpty(author.displayName))) continue;
+    const attributions = authors.map((author) => ({ text: author.displayName as string, url: safeUrl(author.uri, false) }));
+    const source = safeUrl(photo.googleMapsUri, true);
+    if (source) attributions.push({ text: "Google Mapsで写真を見る", url: source });
+    return { name: photo.name, attributions };
+  }
+  return null;
 }

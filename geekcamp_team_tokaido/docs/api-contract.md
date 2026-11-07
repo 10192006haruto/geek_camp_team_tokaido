@@ -125,7 +125,7 @@ export type SearchError = {
 | distanceMeters | 検索座標からの直線距離。非負の有限数、不明はnull |
 | rating | 0〜5の有限数、不明はnull。異なる評価尺度は接続時に明示的に対応 |
 | reviewCount | 非負の整数、不明はnull。0件は0 |
-| photoUrl | 写真のURL、なし・利用不可はnull。UIで代替表示 |
+| photoUrl | 写真の一時URL（Google Placesの最終候補に各1枚）、なし・取得失敗・期限切れはnull。UIで代替表示 |
 | priceLevel | 価格帯、不明はnull。「moderate」などを円の金額として表示しない |
 | isOpenNow | true＝営業中、false＝営業していない、null＝不明。閉業とは区別 |
 | cuisineLabel | 表示用ジャンル、不明はnull |
@@ -133,7 +133,7 @@ export type SearchError = {
 | labels | 根拠のあるラベルの配列。現在の経路では地域性ラベルを付けず[] |
 | recommendationReason | 照合済み情報に基づく定型文（例：「クチコミに○○の言及あり」）。根拠不足はnull |
 | googleMapsUrl | 検証したGoogle Mapsリンク、取得できない場合はnull |
-| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。現在は店舗単位の帰属・写真を取得しておらず`places`・`mock`とも[]。クチコミの投稿者はinferredMenuの各引用のauthorで返す |
+| attributions / photoAttributions | 店舗情報／写真の出典・帰属。各要素に表示文字列textとリンクurl（リンクなしはnull）。`places`は写真の投稿者・提供されたGoogle Maps写真リンクを返す。`mock`は写真なしで[]。クチコミの投稿者はinferredMenuの各引用のauthorで返す |
 
 不明値を0・空文字に置き換えません。根拠のないラベルや推薦文を生成して件数を埋めません。実APIで要求される帰属は表示まで引き継ぎます。この帰属形式だけで規約を満たすかは未確認で、接続時に拡張が必要となる可能性があります。URLは利用可能なスキーム・送信先を検証し、外部HTMLをそのまま描画しません。
 
@@ -214,3 +214,7 @@ export type SearchError = {
 抽出結果が0件（料理の言及なし）は200の空配列で、上記の失敗とは区別します。一部のバッチだけが失敗した場合は上記のエラーにせず、途中結果（`uncheckedCount > 0`）として200で返します。`places`の失敗時にモックへ切り替えません。全レスポンスに`Cache-Control: no-store`を付けます。アプリが返すエラーは上記JSON形状に統一する設計です。405もRoute Handlerで明示的に扱います。フレームワークやプロキシから非JSON応答が返る場合にもクライアントは汎用エラーを表示します。内部例外、外部APIの生レスポンス、キー、スタックトレースを利用者に返しません。
 
 位置情報の拒否・タイムアウト・取得不能はブラウザ側の状態であり、この検索APIのエラーコードとは分けます。失敗時も検索条件を維持して再試行できます。
+
+### 店舗写真の取得
+
+Nearby Searchの`places.photos`で参照と帰属を取得し、条件適用後の最大5店舗に各1回、Place Photos (New)をサーバーから呼びます。`skipHttpRedirect=true`で得た一時URLのみを返し、APIキー・写真参照名は返しません。候補取得・料理抽出の10秒とは別に、写真取得は最大3秒で並行実行し（検索全体は最大約13秒）、利用者の中断時は停止します。写真の取得に失敗しても検索結果を返します。モックでは外部通信しません。写真参照は保存しません。Place Photosは課金対象です。実APIの呼び出し検証は行っていません。取得方法・帰属要件は[Google公式ドキュメント](https://developers.google.com/maps/documentation/places/web-service/place-photos)を参照。

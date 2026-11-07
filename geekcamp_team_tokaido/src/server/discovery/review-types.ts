@@ -14,6 +14,7 @@ export type PlaceReview = {
   translated?: boolean;
 };
 export type ReviewCandidate = Omit<Restaurant, "labels" | "recommendationReason" | "inferredMenu"> & {
+  photoResource?: { name: string; attributions: Restaurant["photoAttributions"] } | null;
   reviews: PlaceReview[];
 };
 export type InferredMenuItemDraft = {

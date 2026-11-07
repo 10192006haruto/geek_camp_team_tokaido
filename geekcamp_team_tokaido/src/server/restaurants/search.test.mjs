@@ -325,3 +325,37 @@ test("places mode: all candidates being chains makes no Gemini call and returns 
   assert.deepEqual(await searchPlaces(request, signal), { restaurants: [], returnedCount: 0, uncheckedCount: 0 });
   assert.equal(log.length, 0);
 });
+
+test("photos survive inference deadline and reach the HTTP contract without resource names", async (t) => {
+  withEnv(t, { RESTAURANT_DATA_SOURCE: "places", GOOGLE_PLACES_API_KEY: "fake-places", GEMINI_API_KEY: "fake-gemini" });
+  const originalTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = (ms) => originalTimeout(ms === 10_000 ? 50 : ms);
+  t.after(() => { AbortSignal.timeout = originalTimeout; });
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const mediaCalls = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/media?')) {
+      assert.equal(init.signal.aborted, false);
+      mediaCalls.push(String(url));
+      return jsonResponse({ photoUri: 'https://lh3.googleusercontent.com/test-photo' });
+    }
+    if (String(url).startsWith('https://places.googleapis.com/')) {
+      const body = manyPlacesBody(10);
+      body.places.forEach(p => { p.photos = [{ name: `places/${p.id}/photos/test`, authorAttributions: [{ displayName: '写真投稿者' }] }]; });
+      return jsonResponse(body);
+    }
+    return failingBatches(['fake-5'], hangUntilAbort)(init);
+  };
+  // AbortSignal.timeout のテスト用タイマーだけではNodeが終了するため、実通信の代わりに保持する。
+  const keepAlive = setTimeout(() => {}, 1000);
+  t.after(() => clearTimeout(keepAlive));
+  const response = await livePost(request);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.uncheckedCount, 5);
+  assert.equal(mediaCalls.length, 5);
+  assert.ok(body.restaurants.every(r => r.photoUrl === 'https://lh3.googleusercontent.com/test-photo'));
+  assert.ok(body.restaurants.every(r => r.photoAttributions[0].text === '写真投稿者'));
+  assert.ok(body.restaurants.every(r => !('photoResource' in r)));
+});
