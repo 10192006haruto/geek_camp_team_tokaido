@@ -7,6 +7,7 @@ export function mockCandidates(): CandidateRestaurant[] {
     { id: "mock-yamanashi", name: "【架空】山梨食堂", dish: "ほうとう", region: "山梨" },
   ].map(({ id, name, dish, region }) => ({
     id, name, location: null, address: null, distanceMeters: null, rating: null,
+    openingHours: null,
     reviewCount: 0, photoUrl: null, priceLevel: null, isOpenNow: null,
     cuisineLabel: null, googleMapsUrl: null, attributions: [], photoAttributions: [],
     isChain: null,

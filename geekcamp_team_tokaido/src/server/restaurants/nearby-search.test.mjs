@@ -171,3 +171,16 @@ test('normalized candidates are accepted by the review selection step', () => {
   assert.equal(result.restaurants[0].inferredMenu[0].evidence[0].author.text, '架空投稿者');
   assert.equal(result.restaurants[0].inferredMenu[0].evidence[0].reviewUrl, 'https://www.google.com/maps/reviews/fake');
 });
+
+test('opening hours retain provider order and distinguish unknown from closed', () => {
+  assert.ok(NEARBY_FIELD_MASK.split(',').includes('places.regularOpeningHours.weekdayDescriptions'));
+  const days = ['月曜日: 定休日', '火曜日: 11:00～14:00、17:00～22:00', '水曜日: 24 時間営業'];
+  const [c] = normalizeNearbyResponse({ places: [place({ regularOpeningHours: { weekdayDescriptions: days }, currentOpeningHours: { openNow: false } })] });
+  assert.deepEqual(c.openingHours, days);
+  assert.equal(c.isOpenNow, false);
+  const result = selectReviewRestaurants([c], [{ placeId: c.id, items: [{ name: '天ぷらそば', evidence: [{ reviewIndex: 0, quote: '天ぷらそばを食べました。' }] }] }], req);
+  assert.deepEqual(result.restaurants[0].openingHours, days);
+  for (const hours of [undefined, {}, { weekdayDescriptions: [] }, { weekdayDescriptions: [''] }, { weekdayDescriptions: [2] }, { weekdayDescriptions: Array(8).fill('月曜日: 定休日') }]) {
+    assert.equal(normalizeNearbyResponse({ places: [place({ regularOpeningHours: hours })] })[0].openingHours, null);
+  }
+});

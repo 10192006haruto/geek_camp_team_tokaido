@@ -60,3 +60,13 @@ test("review dishes render quote and attribution safely without current-offering
   const safe = renderToStaticMarkup(<RestaurantDetail restaurant={bad} demo onBack={() => {}} onHome={() => {}} />);
   assert.doesNotMatch(safe, /href="javascript:|href="https:\/\/evil/);
 });
+
+test("detail separates regular hours from current status and handles unknown hours", () => {
+  const detail = (openingHours: string[] | null) => renderToStaticMarkup(<RestaurantDetail restaurant={{ ...restaurant, isOpenNow: false, openingHours }} demo={false} onBack={() => {}} onHome={() => {}} />);
+  const html = detail(['月曜日: 定休日', '火曜日: 11:00～14:00、17:00～22:00']);
+  assert.match(html, /取得時点では営業時間外/);
+  assert.match(html, /通常の営業時間/);
+  assert.match(html, /火曜日: 11:00～14:00、17:00～22:00/);
+  assert.match(html, /祝日・臨時休業/);
+  assert.match(detail(null), /営業時間不明/);
+});

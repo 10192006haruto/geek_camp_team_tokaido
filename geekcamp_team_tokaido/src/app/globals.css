@@ -500,11 +500,16 @@ textarea {
   display:flex;
   justify-content:space-between;
   align-items:center;
-  margin-top:12px;
-  padding-top:10px;
-  border-top:1px solid #b7c4ac66;
-  font-size:12px;
-  font-weight:650
+  margin-top:16px;
+  padding:12px 16px;
+  border:1px solid #2f4b38;
+  font-size:16px;
+  font-weight:700;
+  min-height:52px;
+  border-radius:12px;
+  background:var(--green);
+  color:#fffdf5;
+  box-shadow:0 4px 12px #2f4b3820
 }
 .candidate-action>span {
   font-size:21px
@@ -845,7 +850,7 @@ textarea {
   display:none
 }
 .detail-screen {
-  max-width:780px;
+  max-width:920px;
   margin:auto;
   background:var(--paper);
   overflow-anchor:none
@@ -871,18 +876,25 @@ textarea {
   z-index:2
 }
 .detail-body {
-  padding:27px 25px 30px;
-  max-width:660px;
+  padding:0 20px 40px;
+  max-width:800px;
   margin:auto
 }
 .detail-body h1 {
-  font-size:30px;
+  font-size:clamp(28px,5vw,40px);
+  line-height:1.4;
   letter-spacing:-.9px;
-  margin:9px 0 12px;
+  margin:10px 0 14px;
   overflow-wrap:anywhere
 }
 .detail-cuisine {
-  font-size:18px;
+  font-size:16px;
+  display:inline-block;
+  padding:5px 12px;
+  border-radius:999px;
+  background:#edf1e7;
+  color:var(--green);
+  font-weight:650;
   margin-bottom:12px
 }
 .demo-badge {
@@ -899,8 +911,9 @@ textarea {
   padding-top:22px
 }
 .detail-body h2 {
-  font-size:15px;
-  margin-bottom:10px
+  font-size:22px;
+  line-height:1.5;
+  margin-bottom:16px
 }
 .detail-reason>p {
   font-size:14px;
@@ -925,18 +938,21 @@ textarea {
   font-size:12px
 }
 .detail-info {
-  font-size:13px;
-  margin:20px 0 28px
+  font-size:16px;
+  line-height:1.85;
+  margin:0
 }
 .detail-info>div {
   display:grid;
-  grid-template-columns:75px 1fr;
-  gap:16px;
+  grid-template-columns:minmax(0,1fr);
+  gap:8px;
   border-bottom:1px solid var(--line);
-  padding:15px 0
+  padding:20px 0
 }
 .detail-info dt {
-  color:var(--muted)
+  color:var(--muted);
+  font-size:14px;
+  font-weight:700
 }
 .detail-info dd {
   margin:0;
@@ -945,8 +961,8 @@ textarea {
 .detail-info small {
   display:block;
   color:var(--muted);
-  font-size:11px;
-  margin-top:4px
+  font-size:14px;
+  margin-top:8px
 }
 .detail-body>.muted {
   margin-top:10px
@@ -956,8 +972,9 @@ textarea {
 }
 .detail-back {
   display:block;
-  margin:17px auto 0;
-  font-size:13px
+  margin:12px auto 0;
+  font-size:16px;
+  min-height:48px
 }
 .gallery {
   display:flex;
@@ -1209,15 +1226,106 @@ textarea {
 }
 
 /* Review-derived dishes: wrap long quotes without horizontal scrolling. */
-.review-dishes { margin-block: 1.5rem; }
-.dish-list { list-style: none; padding: 0; display: grid; gap: 1rem; }
-.dish-list > li { padding: 1rem; border: 1px solid #ddcdbb; border-radius: 1rem; }
+.review-dishes { margin-block: 2rem; }
+.dish-list { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 20px; }
+.dish-list > li { padding: 22px; border: 1px solid #e3ddce; border-radius: 20px; background: #fffefa; box-shadow: 0 4px 20px #26392e06; }
 .review-evidence { margin: 1rem 0 0; overflow-wrap: anywhere; }
 .review-evidence blockquote { margin: 0; padding-inline-start: 1rem; border-inline-start: 3px solid #b65e32; }
-.review-evidence figcaption { display: grid; gap: .5rem; margin-top: .75rem; font-size: .85rem; }
+.review-evidence figcaption { display: grid; gap: .5rem; margin-top: .75rem; font-size: 14px; line-height: 1.8; }
 .review-evidence .credits { margin: 0; }
 .review-avatar { border-radius: 50%; object-fit: cover; }
 .review-evidence a { text-decoration: underline; }
 .review-evidence summary { cursor: pointer; }
 
 .google-maps-attribution { font-family: Arial, sans-serif; font-style: normal; font-weight: 400; font-size: 12px; letter-spacing: normal; white-space: nowrap; color: #5e5e5e; }
+
+.opening-hours {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.opening-hours li + li {
+  margin-top: 0.35rem;
+}
+
+/* 店舗詳細：写真から情報カードへつながる、読みやすい余白と文字サイズ。 */
+.detail-heading {
+  position:relative;
+  margin:-40px 0 28px;
+  padding:26px 24px;
+  background:#fffefa;
+  border:1px solid #e6e7dc;
+  border-radius:24px;
+  box-shadow:0 12px 36px #26392e0d;
+}
+.detail-heading .restaurant-meta {
+  font-size:15px;
+  gap:10px 16px;
+  margin-top:12px;
+}
+.detail-heading .restaurant-meta small { font-size:13px; }
+.detail-heading .open-label,.detail-heading .closed-label {
+  padding:3px 10px;
+  border-radius:8px;
+  background:#edf1e7;
+}
+.detail-heading .closed-label { background:#f0ede7; }
+.detail-body .muted {
+  font-size:14px;
+  line-height:1.9;
+  color:#59675c;
+}
+.detail-body .dish-list h3 { font-size:21px; line-height:1.5; }
+.detail-body .review-evidence blockquote {
+  padding:14px 16px;
+  border-radius:0 12px 12px 0;
+  background:#f7f3e9;
+  font-size:17px;
+  line-height:1.95;
+}
+.detail-body .credits { font-size:14px; line-height:1.8; }
+.detail-body .review-evidence a,.detail-body summary {
+  display:inline-block;
+  padding-block:8px;
+  min-height:44px;
+}
+.detail-facts {
+  padding:24px;
+  margin:28px 0;
+  border:1px solid var(--line);
+  border-radius:24px;
+  background:#fffefa;
+}
+.detail-info>div:last-child { border-bottom:0; padding-bottom:0; }
+.detail-actions {
+  margin-top:28px;
+  padding:22px;
+  border:1px solid #dce3d2;
+  border-radius:20px;
+  background:#eef1e7;
+}
+.detail-actions .primary { min-height:58px; font-size:17px; }
+.detail-actions>.muted { margin-top:12px; }
+.detail-hero .glass-pill { min-height:48px; font-size:15px; padding:10px 16px; }
+.candidate-visual:has(.whole-card:hover) .candidate-action { background:#233d2c; }
+.candidate-visual:has(.whole-card:focus-visible) .candidate-action {
+  outline:3px solid #a85a1d;
+  outline-offset:4px;
+}
+@media(min-width:600px) {
+  .detail-body { padding:0 32px 40px; }
+  .detail-heading { padding:32px; }
+  .detail-facts { padding:28px 32px; }
+  .detail-info>div { grid-template-columns:130px minmax(0,1fr); gap:24px; }
+}
+@media(max-width:359px) {
+  .detail-body { padding-inline:12px; }
+  .detail-heading,.detail-facts,.detail-actions,.dish-list>li { padding:20px 16px; }
+}
+
+.detail-hero .photo-count { bottom:56px; font-size:14px; }
+.detail-hero .photo-count span { font-size:12px; }
+.candidate-glass .restaurant-meta { font-size:13px; }
+.candidate-glass .restaurant-meta small { font-size:12px; }
+.candidate-glass .reason { font-size:14px; }
+.candidate-glass .cuisine { font-size:14px; }

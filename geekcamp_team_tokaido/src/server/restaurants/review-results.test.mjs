@@ -6,7 +6,7 @@ const { parseSearchResponse } = await import('../../app/_lib/search.ts');
 const req = { location: { latitude: 35.6812, longitude: 139.7671 }, radiusMeters: 1000, mood: '', openNow: false };
 const candidates = () => Array.from({ length: 20 }, (_, i) => ({ id: `place-${i}`, name: `架空店舗${i}`,
   location: { latitude: req.location.latitude + i * 0.00001, longitude: req.location.longitude },
-  address: null, distanceMeters: null, rating: null, reviewCount: 0, photoUrl: null, priceLevel: null,
+  address: null, distanceMeters: null, rating: null, reviewCount: 0, photoUrl: null, openingHours: null, priceLevel: null,
   isOpenNow: i > 4, cuisineLabel: null, googleMapsUrl: null, attributions: [], photoAttributions: [],
   reviews: [{ index: 0, text: i === 19 ? 'そばを食べました。' : '定食を食べました。', languageCode: 'ja', rating: null,
     publishTime: null, author: { displayName: `架空投稿者${i}`, uri: null }, googleMapsUri: null }] }));

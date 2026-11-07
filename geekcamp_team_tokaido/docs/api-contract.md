@@ -88,6 +88,7 @@ export type Restaurant = {
   photoUrl: string | null;
   priceLevel: PriceLevel | null;
   isOpenNow: boolean | null;
+  openingHours: string[] | null;
   cuisineLabel: string | null;
   inferredMenu: InferredMenuItem[];
   labels: string[];
@@ -128,6 +129,7 @@ export type SearchError = {
 | photoUrl | 写真の一時URL（Google Placesの最終候補に各1枚）、なし・取得失敗・期限切れはnull。UIで代替表示 |
 | priceLevel | 価格帯、不明はnull。「moderate」などを円の金額として表示しない |
 | isOpenNow | true＝営業中、false＝営業していない、null＝不明。閉業とは区別 |
+| openingHours | 通常の曜日別営業時間。1〜7件の空でない文字列、取得元の順序を保持。不明・不正な情報はnull。祝日・臨時変更は保証しない |
 | cuisineLabel | 表示用ジャンル、不明はnull |
 | inferredMenu | クチコミで言及された料理。返却する店舗では常に1品以上（最大10品）、各料理に照合済みの引用1〜5件。投稿者・リンク・日時はモデルではなく取得データから付与 |
 | labels | 根拠のあるラベルの配列。現在の経路では地域性ラベルを付けず[] |
@@ -155,6 +157,7 @@ export type SearchError = {
       "photoUrl": null,
       "priceLevel": null,
       "isOpenNow": true,
+      "openingHours": null,
       "cuisineLabel": "定食屋",
       "googleMapsUrl": null,
       "attributions": [],
@@ -218,3 +221,7 @@ export type SearchError = {
 ### 店舗写真の取得
 
 Nearby Searchの`places.photos`で参照と帰属を取得し、条件適用後の最大5店舗に各1回、Place Photos (New)をサーバーから呼びます。`skipHttpRedirect=true`で得た一時URLのみを返し、APIキー・写真参照名は返しません。候補取得・料理抽出の10秒とは別に、写真取得は最大3秒で並行実行し（検索全体は最大約13秒）、利用者の中断時は停止します。写真の取得に失敗しても検索結果を返します。モックでは外部通信しません。写真参照は保存しません。Place Photosは課金対象です。実APIの呼び出し検証は行っていません。取得方法・帰属要件は[Google公式ドキュメント](https://developers.google.com/maps/documentation/places/web-service/place-photos)を参照。
+
+### 通常の営業時間
+
+Nearby Searchの`places.regularOpeningHours.weekdayDescriptions`を既存の検索リクエストで取得し、`openingHours`として返します。営業中フィルターは引き続き`currentOpeningHours.openNow`に基づきます。通常時間の文字列から現在の営業状態を推測しません。モックは`openingHours: null`です。取得元の曜日順と中休み・24時間営業などの表記を保持します。[GoogleのOpeningHours仕様](https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places#OpeningHours)を参照してください。
