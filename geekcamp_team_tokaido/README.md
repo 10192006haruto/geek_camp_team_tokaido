@@ -2,9 +2,12 @@
 
 現在地周辺のご当地料理・穴場・地元で親しまれる飲食店を発見する、スマートフォン中心のWebアプリです。
 
-画面・検索API・ご当地判定を接続済みです。検索条件は範囲・気分・営業中のみ。店舗取得は東京駅周辺の架空店舗を使うモックで、実店舗APIは未接続です。
+検索条件は範囲・気分・営業中のみ。検索APIは、周辺店舗のクチコミから料理名と根拠の引用を抽出し、最大5件を返します（[MVP仕様](docs/review-dishes-mvp-spec.md)）。
 
-「デモで試す」→通常モードで、固定座標からHTTP API・判定・画面まで確認できます。詳しくは[API契約](docs/api-contract.md)と[フロント説明](src/app/FRONTEND.md)を参照してください。
+- 実API（`places`）：Google Places の Nearby Search で最大20店舗・各最大5件のクチコミを取得 → Gemini で料理を抽出 → 引用を原文と照合 → 営業条件・気分 → 最大5件。実店舗での動作は未確認です。
+- モック（`mock`）：東京駅周辺の架空店舗と固定の抽出結果。外部通信なし・キー不要。
+
+ご当地判定（`src/server/discovery/` の郷土料理照合）は現在の検索経路では使っていません。詳しくは[API契約](docs/api-contract.md)と[フロント説明](src/app/FRONTEND.md)を参照してください。
 
 ## チームと設計資料
 
@@ -47,16 +50,34 @@ API契約を変更する場合は、共有型・モック・API仕様書を一�
 
 ## セットアップと確認
 
-package.jsonのあるアプリルートでnpm ci、npm run devを実行し、http://localhost:3000 を開きます。モック検索はキー不要です。通常の現在地検索もモックのため、東京駅から離れた位置では0件です。
+package.jsonのあるアプリルートでnpm ci、npm run devを実行し、http://localhost:3000 を開きます。
+
+### 店舗データの取得元（モック／実API）
+
+アプリルートの`.env.example`をコピーして`.env.local`を作り、`RESTAURANT_DATA_SOURCE`で取得元を選びます。変更後は`npm run dev`を再起動してください。
+
+| RESTAURANT_DATA_SOURCE | 動作 | 必要なキー |
+|---|---|---|
+| `mock` | 架空店舗と固定の抽出結果。外部通信なし | なし |
+| `places` | Nearby Search と Gemini を実際に呼ぶ（**有料APIの利用が発生**） | `GOOGLE_PLACES_API_KEY`、`GEMINI_API_KEY` |
+| 未設定 | 開発中は`mock`。本番（`NODE_ENV=production`）では503 | — |
+
+- モックは東京駅周辺の店舗だけを返すため、離れた現在地では0件です。
+- `places`でキーが未設定・権限不足（403）・利用上限（429）のときは503を返し、モックへは切り替えません。
+- 検索全体（Places＋Gemini＋照合）の期限は10秒で、超えると504です。
+- Places は`places.reviews`を含むため Nearby Search Enterprise + Atmosphere の料金区分です。Google Cloud で Places API (New) を有効にし、1日の割り当て上限を設定してから使ってください（料金の根拠は[型と受け渡しの案](docs/review-menu-inference-proposal.md)）。
+- サーバーキーに`NEXT_PUBLIC_`を付けません。`.env.local`は両階層の`.gitignore`で除外され、`.env.example`だけを追跡します。`.env.example`にはダミー値以外を書きません。
+
+### 確認コマンド
 
 ```sh
 npm run lint
 npx tsc --noEmit
 npm run build
 node scripts/test.mjs
-node --test src/server/restaurants/search.test.mjs src/server/discovery/discovery.test.mjs
+node --test src/server/restaurants/*.test.mjs src/server/discovery/*.test.mjs
 ```
 
-現在の環境ではlintがESLintとTypeScriptプラグインの互換性エラーで停止します。依存整合は別途対応が必要です。
+自動テストは外部APIを呼びません。現在の環境ではlintがESLintとTypeScriptプラグインの互換性エラーで停止します。依存整合は別途対応が必要です。
 
-サーバーキーにNEXT_PUBLIC_を付けません。両階層の.gitignoreは.env*を除外しています。実API接続前に費用・取得フィールド・帰属・保存条件を確認します。
+実API利用前に、クチコミの表示・帰属・保存条件、Gemini への送信可否を確認します。
